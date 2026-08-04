@@ -8,9 +8,20 @@ from collections.abc import Iterable, Mapping
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .errors import ErroreImportazione, ErroreMigrazione, MondoNonTrovato
+from .errors import (
+    ErroreImportazione,
+    ErroreMigrazione,
+    ErroreStatoMondo,
+    MondoNonTrovato,
+)
 from .models import FileSorgente, Mondo, VersioneMondo
-from .world_state import EntitaImportata, importa_entita_da_file
+from .world_state import (
+    AggiornamentoStato,
+    EntitaImportata,
+    EntitaMondo,
+    EventoMondo,
+    importa_entita_da_file,
+)
 
 
 def _adesso_utc() -> str:
@@ -26,6 +37,13 @@ def _deserializza_impostazioni(valore: str) -> dict[str, str]:
     return {str(chiave): str(contenuto) for chiave, contenuto in dati.items()}
 
 
+def _deserializza_oggetto(valore: str) -> dict[str, object]:
+    dati = json.loads(valore)
+    if not isinstance(dati, dict):
+        raise ValueError("Il dato JSON interno non descrive un oggetto.")
+    return dict(dati)
+
+
 class ArchivioSQLite:
     """Archivio locale; ogni modifica crea una riga in ``world_versions``."""
 
@@ -35,7 +53,11 @@ class ArchivioSQLite:
         self._connessione = sqlite3.connect(self.percorso_database)
         self._connessione.row_factory = sqlite3.Row
         self._connessione.execute("PRAGMA foreign_keys = ON")
-        self._inizializza_schema()
+        try:
+            self._inizializza_schema()
+        except Exception:
+            self._connessione.close()
+            raise
 
     def _inizializza_schema(self) -> None:
         versione = int(self._connessione.execute("PRAGMA user_version").fetchone()[0])
@@ -456,6 +478,213 @@ class ArchivioSQLite:
             scenario=riga["scenario"],
             impostazioni_narrative=_deserializza_impostazioni(
                 riga["narrative_settings"]
+            ),
+        )
+
+    def elenca_entita(
+        self, mondo_id: str, entity_type: str | None = None
+    ) -> list[EntitaMondo]:
+        self.carica_mondo(mondo_id)
+        parametri: list[object] = [mondo_id]
+        filtro = ""
+        if entity_type is not None:
+            filtro = " AND e.entity_type = ?"
+            parametri.append(entity_type)
+        righe = self._connessione.execute(
+            """
+            SELECT e.world_id, e.entity_id, e.entity_type, e.canonical_name,
+                   e.canonical_data, e.status, s.location_id, s.holder_id,
+                   s.accessibility, s.condition, s.state_data, s.version,
+                   s.updated_at
+            FROM world_entities AS e
+            JOIN entity_state AS s
+              ON s.world_id = e.world_id AND s.entity_id = e.entity_id
+            WHERE e.world_id = ?
+            """
+            + filtro
+            + " ORDER BY e.entity_type, e.canonical_name",
+            tuple(parametri),
+        ).fetchall()
+        return [self._entita_da_riga(riga) for riga in righe]
+
+    def carica_entita(self, mondo_id: str, entity_id: str) -> EntitaMondo:
+        self.carica_mondo(mondo_id)
+        riga = self._connessione.execute(
+            """
+            SELECT e.world_id, e.entity_id, e.entity_type, e.canonical_name,
+                   e.canonical_data, e.status, s.location_id, s.holder_id,
+                   s.accessibility, s.condition, s.state_data, s.version,
+                   s.updated_at
+            FROM world_entities AS e
+            JOIN entity_state AS s
+              ON s.world_id = e.world_id AND s.entity_id = e.entity_id
+            WHERE e.world_id = ? AND e.entity_id = ?
+            """,
+            (mondo_id, entity_id),
+        ).fetchone()
+        if riga is None:
+            raise ErroreStatoMondo(
+                f"L'entità richiesta “{entity_id}” non esiste o non possiede uno stato corrente."
+            )
+        return self._entita_da_riga(riga)
+
+    def entita_possedute(
+        self, mondo_id: str, holder_id: str
+    ) -> list[EntitaMondo]:
+        return [
+            entita
+            for entita in self.elenca_entita(mondo_id)
+            if entita.holder_id == holder_id
+        ]
+
+    @staticmethod
+    def _entita_da_riga(riga: sqlite3.Row) -> EntitaMondo:
+        return EntitaMondo(
+            world_id=riga["world_id"],
+            entity_id=riga["entity_id"],
+            entity_type=riga["entity_type"],
+            canonical_name=riga["canonical_name"],
+            canonical_data=_deserializza_oggetto(riga["canonical_data"]),
+            status=riga["status"],
+            location_id=riga["location_id"],
+            holder_id=riga["holder_id"],
+            accessibility=bool(riga["accessibility"]),
+            condition=riga["condition"],
+            state_data=_deserializza_oggetto(riga["state_data"]),
+            version=int(riga["version"]),
+            updated_at=riga["updated_at"],
+        )
+
+    def elenca_eventi(self, mondo_id: str) -> list[EventoMondo]:
+        self.carica_mondo(mondo_id)
+        righe = self._connessione.execute(
+            """
+            SELECT event_id, world_id, event_type, occurred_at, actor_id,
+                   target_id, location_id, payload, reason, created_at
+            FROM events WHERE world_id = ?
+            ORDER BY occurred_at, created_at, event_id
+            """,
+            (mondo_id,),
+        ).fetchall()
+        return [self._evento_da_riga(riga) for riga in righe]
+
+    def eventi_per_entita(
+        self, mondo_id: str, entity_id: str
+    ) -> list[EventoMondo]:
+        self.carica_entita(mondo_id, entity_id)
+        righe = self._connessione.execute(
+            """
+            SELECT event_id, world_id, event_type, occurred_at, actor_id,
+                   target_id, location_id, payload, reason, created_at
+            FROM events
+            WHERE world_id = ?
+              AND (actor_id = ? OR target_id = ? OR location_id = ?)
+            ORDER BY occurred_at, created_at, event_id
+            """,
+            (mondo_id, entity_id, entity_id, entity_id),
+        ).fetchall()
+        return [self._evento_da_riga(riga) for riga in righe]
+
+    @staticmethod
+    def _evento_da_riga(riga: sqlite3.Row) -> EventoMondo:
+        return EventoMondo(
+            event_id=riga["event_id"],
+            world_id=riga["world_id"],
+            event_type=riga["event_type"],
+            occurred_at=riga["occurred_at"],
+            actor_id=riga["actor_id"],
+            target_id=riga["target_id"],
+            location_id=riga["location_id"],
+            payload=_deserializza_oggetto(riga["payload"]),
+            reason=riga["reason"],
+            created_at=riga["created_at"],
+        )
+
+    def applica_evento_e_stati(
+        self,
+        evento: EventoMondo,
+        aggiornamenti: Iterable[AggiornamentoStato],
+    ) -> None:
+        elenco = list(aggiornamenti)
+        try:
+            with self._connessione:
+                self._inserisci_evento(evento)
+                for aggiornamento in elenco:
+                    aggiornato_canone = self._connessione.execute(
+                        """
+                        UPDATE world_entities
+                        SET status = ?, updated_at = ?
+                        WHERE world_id = ? AND entity_id = ?
+                        """,
+                        (
+                            aggiornamento.status,
+                            evento.created_at,
+                            evento.world_id,
+                            aggiornamento.entity_id,
+                        ),
+                    )
+                    aggiornato_stato = self._connessione.execute(
+                        """
+                        UPDATE entity_state
+                        SET location_id = ?, holder_id = ?, accessibility = ?,
+                            condition = ?, state_data = ?, version = version + 1,
+                            updated_at = ?
+                        WHERE world_id = ? AND entity_id = ? AND version = ?
+                        """,
+                        (
+                            aggiornamento.location_id,
+                            aggiornamento.holder_id,
+                            int(aggiornamento.accessibility),
+                            aggiornamento.condition,
+                            json.dumps(
+                                aggiornamento.state_data,
+                                ensure_ascii=False,
+                                sort_keys=True,
+                            ),
+                            evento.created_at,
+                            evento.world_id,
+                            aggiornamento.entity_id,
+                            aggiornamento.expected_version,
+                        ),
+                    )
+                    if aggiornato_canone.rowcount != 1 or aggiornato_stato.rowcount != 1:
+                        raise sqlite3.IntegrityError(
+                            "Lo stato corrente è cambiato durante l'operazione."
+                        )
+        except sqlite3.Error as errore:
+            raise ErroreStatoMondo(
+                "L'operazione sullo stato non è riuscita: evento e stato sono "
+                "rimasti invariati."
+            ) from errore
+
+    def registra_evento(self, evento: EventoMondo) -> None:
+        try:
+            with self._connessione:
+                self._inserisci_evento(evento)
+        except sqlite3.Error as errore:
+            raise ErroreStatoMondo(
+                "Non è stato possibile registrare l'evento descrittivo."
+            ) from errore
+
+    def _inserisci_evento(self, evento: EventoMondo) -> None:
+        self._connessione.execute(
+            """
+            INSERT INTO events (
+                event_id, world_id, event_type, occurred_at, actor_id,
+                target_id, location_id, payload, reason, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                evento.event_id,
+                evento.world_id,
+                evento.event_type,
+                evento.occurred_at,
+                evento.actor_id,
+                evento.target_id,
+                evento.location_id,
+                json.dumps(evento.payload, ensure_ascii=False, sort_keys=True),
+                evento.reason,
+                evento.created_at,
             ),
         )
 

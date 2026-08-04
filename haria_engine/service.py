@@ -13,7 +13,7 @@ from pathlib import Path, PurePosixPath
 from .errors import ErroreEsportazione, ErroreImportazione
 from .models import FileSorgente, Mondo, RisultatoEsportazione, VersioneMondo
 from .storage import ArchivioSQLite
-from .world_state import importa_entita_da_file
+from .world_state import ServizioStatoMondo, importa_entita_da_file
 
 
 FILE_OBBLIGATORI = (
@@ -30,6 +30,7 @@ class ServizioMondi:
 
     def __init__(self, percorso_database: str | Path) -> None:
         self.archivio = ArchivioSQLite(percorso_database)
+        self.stato_mondo = ServizioStatoMondo(self.archivio)
 
     def importa_da_cartella(self, cartella_sorgente: str | Path) -> Mondo:
         sorgente = Path(cartella_sorgente).expanduser().resolve()
