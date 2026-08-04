@@ -1,0 +1,11 @@
+[project]
+name = "haria-engine"
+version = "0.1.0"
+description = "Editor desktop locale e versionato per mondi narrativi"
+requires-python = ">=3.11"
+dependencies = []
+
+[tool.haria-engine]
+interface_language = "it"
+database = "SQLite"
+
