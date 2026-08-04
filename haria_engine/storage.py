@@ -132,7 +132,6 @@ class ArchivioSQLite:
                     entity_type TEXT NOT NULL,
                     canonical_name TEXT NOT NULL,
                     canonical_data TEXT NOT NULL,
-                    status TEXT NOT NULL,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL,
                     PRIMARY KEY (world_id, entity_id),
@@ -144,6 +143,7 @@ class ArchivioSQLite:
                 CREATE TABLE entity_state (
                     world_id TEXT NOT NULL,
                     entity_id TEXT NOT NULL,
+                    current_status TEXT NOT NULL,
                     location_id TEXT,
                     holder_id TEXT,
                     accessibility INTEGER NOT NULL,
@@ -177,6 +177,7 @@ class ArchivioSQLite:
                     payload TEXT NOT NULL,
                     reason TEXT NOT NULL,
                     created_at TEXT NOT NULL,
+                    UNIQUE (event_id, world_id),
                     FOREIGN KEY (world_id) REFERENCES worlds(id) ON DELETE RESTRICT,
                     FOREIGN KEY (world_id, actor_id)
                         REFERENCES world_entities(world_id, entity_id)
@@ -187,6 +188,22 @@ class ArchivioSQLite:
                     FOREIGN KEY (world_id, location_id)
                         REFERENCES world_entities(world_id, entity_id)
                         ON DELETE RESTRICT
+                )
+            """,
+            """
+                CREATE TABLE event_entities (
+                    event_id TEXT NOT NULL,
+                    world_id TEXT NOT NULL,
+                    entity_id TEXT NOT NULL,
+                    role TEXT NOT NULL,
+                    PRIMARY KEY (event_id, entity_id, role),
+                    FOREIGN KEY (event_id, world_id)
+                        REFERENCES events(event_id, world_id)
+                        ON DELETE RESTRICT,
+                    FOREIGN KEY (world_id, entity_id)
+                        REFERENCES world_entities(world_id, entity_id)
+                        ON DELETE RESTRICT,
+                    CHECK (role IN ('actor', 'target', 'location', 'affected'))
                 )
             """,
             """
@@ -202,10 +219,28 @@ class ArchivioSQLite:
                     ON events(world_id, target_id, occurred_at)
             """,
             """
+                CREATE INDEX idx_event_entities_entity
+                    ON event_entities(world_id, entity_id, event_id)
+            """,
+            """
                 CREATE TRIGGER events_append_only_update
                 BEFORE UPDATE ON events
                 BEGIN
                     SELECT RAISE(ABORT, 'Il registro eventi è immutabile: aggiornamento vietato.');
+                END
+            """,
+            """
+                CREATE TRIGGER event_entities_append_only_update
+                BEFORE UPDATE ON event_entities
+                BEGIN
+                    SELECT RAISE(ABORT, 'Le associazioni degli eventi sono immutabili: aggiornamento vietato.');
+                END
+            """,
+            """
+                CREATE TRIGGER event_entities_append_only_delete
+                BEFORE DELETE ON event_entities
+                BEGIN
+                    SELECT RAISE(ABORT, 'Le associazioni degli eventi sono immutabili: cancellazione vietata.');
                 END
             """,
             """
@@ -245,8 +280,8 @@ class ArchivioSQLite:
             """
             INSERT INTO world_entities (
                 world_id, entity_id, entity_type, canonical_name,
-                canonical_data, status, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                canonical_data, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 (
@@ -255,7 +290,6 @@ class ArchivioSQLite:
                     voce.entity_type,
                     voce.canonical_name,
                     json.dumps(voce.canonical_data, ensure_ascii=False, sort_keys=True),
-                    voce.status,
                     istante,
                     istante,
                 )
@@ -265,14 +299,15 @@ class ArchivioSQLite:
         self._connessione.executemany(
             """
             INSERT INTO entity_state (
-                world_id, entity_id, location_id, holder_id, accessibility,
+                world_id, entity_id, current_status, location_id, holder_id, accessibility,
                 condition, state_data, version, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
             """,
             (
                 (
                     mondo_id,
                     voce.entity_id,
+                    voce.status,
                     voce.location_id,
                     voce.holder_id,
                     int(voce.accessibility),
@@ -493,7 +528,8 @@ class ArchivioSQLite:
         righe = self._connessione.execute(
             """
             SELECT e.world_id, e.entity_id, e.entity_type, e.canonical_name,
-                   e.canonical_data, e.status, s.location_id, s.holder_id,
+                   e.canonical_data, s.current_status AS status,
+                   s.location_id, s.holder_id,
                    s.accessibility, s.condition, s.state_data, s.version,
                    s.updated_at
             FROM world_entities AS e
@@ -512,7 +548,8 @@ class ArchivioSQLite:
         riga = self._connessione.execute(
             """
             SELECT e.world_id, e.entity_id, e.entity_type, e.canonical_name,
-                   e.canonical_data, e.status, s.location_id, s.holder_id,
+                   e.canonical_data, s.current_status AS status,
+                   s.location_id, s.holder_id,
                    s.accessibility, s.condition, s.state_data, s.version,
                    s.updated_at
             FROM world_entities AS e
@@ -574,14 +611,21 @@ class ArchivioSQLite:
         self.carica_entita(mondo_id, entity_id)
         righe = self._connessione.execute(
             """
-            SELECT event_id, world_id, event_type, occurred_at, actor_id,
-                   target_id, location_id, payload, reason, created_at
-            FROM events
-            WHERE world_id = ?
-              AND (actor_id = ? OR target_id = ? OR location_id = ?)
-            ORDER BY occurred_at, created_at, event_id
+            SELECT e.event_id, e.world_id, e.event_type, e.occurred_at,
+                   e.actor_id, e.target_id, e.location_id, e.payload,
+                   e.reason, e.created_at
+            FROM events AS e
+            WHERE e.world_id = ?
+              AND EXISTS (
+                  SELECT 1
+                  FROM event_entities AS ee
+                  WHERE ee.event_id = e.event_id
+                    AND ee.world_id = e.world_id
+                    AND ee.entity_id = ?
+              )
+            ORDER BY e.occurred_at, e.created_at, e.event_id
             """,
-            (mondo_id, entity_id, entity_id, entity_id),
+            (mondo_id, entity_id),
         ).fetchall()
         return [self._evento_da_riga(riga) for riga in righe]
 
@@ -608,30 +652,21 @@ class ArchivioSQLite:
         elenco = list(aggiornamenti)
         try:
             with self._connessione:
-                self._inserisci_evento(evento)
+                self._inserisci_evento(
+                    evento,
+                    (aggiornamento.entity_id for aggiornamento in elenco),
+                )
                 for aggiornamento in elenco:
-                    aggiornato_canone = self._connessione.execute(
-                        """
-                        UPDATE world_entities
-                        SET status = ?, updated_at = ?
-                        WHERE world_id = ? AND entity_id = ?
-                        """,
-                        (
-                            aggiornamento.status,
-                            evento.created_at,
-                            evento.world_id,
-                            aggiornamento.entity_id,
-                        ),
-                    )
                     aggiornato_stato = self._connessione.execute(
                         """
                         UPDATE entity_state
-                        SET location_id = ?, holder_id = ?, accessibility = ?,
-                            condition = ?, state_data = ?, version = version + 1,
-                            updated_at = ?
+                        SET current_status = ?, location_id = ?, holder_id = ?,
+                            accessibility = ?, condition = ?, state_data = ?,
+                            version = version + 1, updated_at = ?
                         WHERE world_id = ? AND entity_id = ? AND version = ?
                         """,
                         (
+                            aggiornamento.status,
                             aggiornamento.location_id,
                             aggiornamento.holder_id,
                             int(aggiornamento.accessibility),
@@ -647,7 +682,7 @@ class ArchivioSQLite:
                             aggiornamento.expected_version,
                         ),
                     )
-                    if aggiornato_canone.rowcount != 1 or aggiornato_stato.rowcount != 1:
+                    if aggiornato_stato.rowcount != 1:
                         raise sqlite3.IntegrityError(
                             "Lo stato corrente è cambiato durante l'operazione."
                         )
@@ -660,13 +695,17 @@ class ArchivioSQLite:
     def registra_evento(self, evento: EventoMondo) -> None:
         try:
             with self._connessione:
-                self._inserisci_evento(evento)
+                self._inserisci_evento(evento, ())
         except sqlite3.Error as errore:
             raise ErroreStatoMondo(
                 "Non è stato possibile registrare l'evento descrittivo."
             ) from errore
 
-    def _inserisci_evento(self, evento: EventoMondo) -> None:
+    def _inserisci_evento(
+        self,
+        evento: EventoMondo,
+        entita_interessate: Iterable[str],
+    ) -> None:
         self._connessione.execute(
             """
             INSERT INTO events (
@@ -685,6 +724,27 @@ class ArchivioSQLite:
                 json.dumps(evento.payload, ensure_ascii=False, sort_keys=True),
                 evento.reason,
                 evento.created_at,
+            ),
+        )
+        associazioni: set[tuple[str, str]] = set()
+        for entity_id, ruolo in (
+            (evento.actor_id, "actor"),
+            (evento.target_id, "target"),
+            (evento.location_id, "location"),
+        ):
+            if entity_id is not None:
+                associazioni.add((entity_id, ruolo))
+        associazioni.update(
+            (entity_id, "affected") for entity_id in entita_interessate
+        )
+        self._connessione.executemany(
+            """
+            INSERT INTO event_entities (event_id, world_id, entity_id, role)
+            VALUES (?, ?, ?, ?)
+            """,
+            (
+                (evento.event_id, evento.world_id, entity_id, ruolo)
+                for entity_id, ruolo in sorted(associazioni)
             ),
         )
 
