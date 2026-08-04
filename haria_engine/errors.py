@@ -16,3 +16,11 @@ class ErroreEsportazione(ErroreHaria):
 class MondoNonTrovato(ErroreHaria):
     """Il mondo richiesto non esiste nell'archivio locale."""
 
+
+class ErroreMigrazione(ErroreHaria):
+    """Il database non può essere migrato senza rischiare dati parziali."""
+
+
+class ErroreStatoMondo(ErroreHaria):
+    """Un'operazione strutturata sullo stato del mondo non è valida."""
+

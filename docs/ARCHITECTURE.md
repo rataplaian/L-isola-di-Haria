@@ -17,6 +17,12 @@ Registra posizione, possesso, condizioni, relazioni, accessibilità e stato dell
 ### 5. Registro eventi
 Ogni cambiamento rilevante diventa un evento immutabile.
 
+Nel Task 002, `haria_engine/world_state.py` espone le sole operazioni strutturate
+validate. `haria_engine/storage.py` applica evento, associazioni alle entità e
+aggiornamenti dello stato nella stessa transazione SQLite. I registri `events`
+ed `event_entities` sono protetti anche da trigger contro aggiornamenti e
+cancellazioni.
+
 ### 6. Memorie soggettive
 Ogni personaggio conosce soltanto ciò che ha osservato, dedotto o appreso.
 
@@ -47,3 +53,16 @@ Interfaccia sostituibile. Prima implementazione: Ollama.
 ## Regola fondamentale
 La narrazione non è la fonte della verità.
 Il database è la fonte della verità.
+
+## Confini implementati nel Task 002
+
+- Il canone originale resta immutabile in `world_entities.canonical_data` e
+  nelle fotografie sorgente.
+- Lo stato operativo corrente, incluso `current_status`, resta in
+  `entity_state`.
+- Gli eventi sono righe immutabili in `events`; `event_entities` ne registra le
+  entità coinvolte e permette una cronologia completa senza creare duplicati.
+- La configurazione narrativa continua a essere versionata separatamente.
+- Memorie soggettive, simulazione e provider LLM non sono implementati.
+
+La GUI legge modelli tipizzati e non accede direttamente a SQL o dati tecnici.

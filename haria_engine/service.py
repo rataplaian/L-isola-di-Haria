@@ -13,9 +13,16 @@ from pathlib import Path, PurePosixPath
 from .errors import ErroreEsportazione, ErroreImportazione
 from .models import FileSorgente, Mondo, RisultatoEsportazione, VersioneMondo
 from .storage import ArchivioSQLite
+from .world_state import ServizioStatoMondo, importa_entita_da_file
 
 
-FILE_OBBLIGATORI = ("world.json", "scenario.md")
+FILE_OBBLIGATORI = (
+    "world.json",
+    "scenario.md",
+    "characters.json",
+    "locations.json",
+    "items.json",
+)
 
 
 class ServizioMondi:
@@ -23,6 +30,7 @@ class ServizioMondi:
 
     def __init__(self, percorso_database: str | Path) -> None:
         self.archivio = ArchivioSQLite(percorso_database)
+        self.stato_mondo = ServizioStatoMondo(self.archivio)
 
     def importa_da_cartella(self, cartella_sorgente: str | Path) -> Mondo:
         sorgente = Path(cartella_sorgente).expanduser().resolve()
@@ -43,6 +51,7 @@ class ServizioMondi:
         scenario = self._leggi_testo(sorgente / "scenario.md", "scenario.md")
         impostazioni = self._leggi_impostazioni(dati_mondo)
         file_sorgente = self._fotografa_file_sorgente(sorgente)
+        entita = importa_entita_da_file(file_sorgente)
 
         return self.archivio.importa_mondo(
             mondo_id=mondo_id,
@@ -52,6 +61,7 @@ class ServizioMondi:
             scenario=scenario,
             impostazioni_narrative=impostazioni,
             file_sorgente=file_sorgente,
+            entita=entita,
         )
 
     def _leggi_world_json(self, percorso: Path) -> dict[str, object]:

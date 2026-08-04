@@ -11,6 +11,7 @@ from .errors import ErroreHaria
 from .models import Mondo
 from .paths import database_predefinito
 from .service import ServizioMondi
+from .world_state import EntitaMondo, TIPO_OGGETTO, TIPO_PERSONAGGIO
 
 
 UI_TEXT = {
@@ -48,6 +49,24 @@ UI_TEXT = {
         "No: scarta le modifiche.\n"
         "Annulla: interrompe l'operazione."
     ),
+    "stato_mondo": "Stato del mondo",
+    "nome_entita": "Entità",
+    "tipo_entita": "Tipo",
+    "posizione": "Posizione",
+    "possessore": "Possessore",
+    "stato_entita": "Stato",
+    "condizione": "Condizione",
+    "accessibilita": "Accessibilità",
+    "eventi_entita": "Cronologia eventi dell'entità selezionata",
+    "nessun_evento": "Nessun evento registrato per l'entità selezionata.",
+    "tipo_evento": "Evento",
+    "data_evento": "Data",
+    "motivo_evento": "Motivo",
+    "oggetto_da_trasferire": "Oggetto",
+    "nuovo_possessore": "Nuovo possessore",
+    "trasferisci_oggetto": "Trasferisci oggetto",
+    "seleziona_trasferimento": "Seleziona un oggetto e un nuovo possessore.",
+    "trasferimento_completato": "Oggetto trasferito e stato aggiornato correttamente.",
 }
 
 
@@ -79,6 +98,8 @@ class ApplicazioneHaria:
         self.campi_impostazioni: dict[str, tk.StringVar] = {}
         self.stato_editor = StatoEditor()
         self._caricamento_interfaccia = False
+        self._oggetti_trasferibili: list[EntitaMondo] = []
+        self._possessori_disponibili: list[EntitaMondo] = []
 
         self.radice.title(UI_TEXT["titolo_finestra"])
         self.radice.geometry("1080x720")
@@ -151,6 +172,8 @@ class ApplicazioneHaria:
         )
         self.scheda_impostazioni.columnconfigure(1, weight=1)
 
+        self._costruisci_scheda_stato_mondo()
+
         scheda_cronologia = ttk.Frame(self.schede, padding=10)
         self.schede.add(scheda_cronologia, text=UI_TEXT["cronologia"])
         scheda_cronologia.rowconfigure(0, weight=1)
@@ -190,6 +213,93 @@ class ApplicazioneHaria:
         )
         self.etichetta_stato.pack(fill=tk.X, pady=(10, 0))
 
+    def _costruisci_scheda_stato_mondo(self) -> None:
+        scheda = ttk.Frame(self.schede, padding=10)
+        self.schede.add(scheda, text=UI_TEXT["stato_mondo"])
+        scheda.rowconfigure(0, weight=3)
+        scheda.rowconfigure(2, weight=2)
+        scheda.columnconfigure(0, weight=1)
+
+        colonne = (
+            "nome",
+            "tipo",
+            "posizione",
+            "possessore",
+            "stato",
+            "condizione",
+            "accessibilita",
+        )
+        self.albero_stato_mondo = ttk.Treeview(
+            scheda, columns=colonne, show="headings", selectmode="browse"
+        )
+        intestazioni = {
+            "nome": UI_TEXT["nome_entita"],
+            "tipo": UI_TEXT["tipo_entita"],
+            "posizione": UI_TEXT["posizione"],
+            "possessore": UI_TEXT["possessore"],
+            "stato": UI_TEXT["stato_entita"],
+            "condizione": UI_TEXT["condizione"],
+            "accessibilita": UI_TEXT["accessibilita"],
+        }
+        for colonna, testo in intestazioni.items():
+            self.albero_stato_mondo.heading(colonna, text=testo)
+        self.albero_stato_mondo.column("nome", width=190)
+        self.albero_stato_mondo.column("tipo", width=100)
+        self.albero_stato_mondo.column("posizione", width=170)
+        self.albero_stato_mondo.column("possessore", width=150)
+        self.albero_stato_mondo.column("stato", width=110)
+        self.albero_stato_mondo.column("condizione", width=110)
+        self.albero_stato_mondo.column("accessibilita", width=100)
+        self.albero_stato_mondo.grid(row=0, column=0, sticky="nsew")
+        self.albero_stato_mondo.bind(
+            "<<TreeviewSelect>>", self._mostra_eventi_entita_selezionata
+        )
+
+        ttk.Label(scheda, text=UI_TEXT["eventi_entita"]).grid(
+            row=1, column=0, sticky="w", pady=(10, 4)
+        )
+        self.albero_eventi_entita = ttk.Treeview(
+            scheda,
+            columns=("data", "tipo", "motivo"),
+            show="headings",
+            selectmode="none",
+        )
+        self.albero_eventi_entita.heading("data", text=UI_TEXT["data_evento"])
+        self.albero_eventi_entita.heading("tipo", text=UI_TEXT["tipo_evento"])
+        self.albero_eventi_entita.heading("motivo", text=UI_TEXT["motivo_evento"])
+        self.albero_eventi_entita.column("data", width=220)
+        self.albero_eventi_entita.column("tipo", width=180)
+        self.albero_eventi_entita.column("motivo", width=500)
+        self.albero_eventi_entita.grid(row=2, column=0, sticky="nsew")
+
+        controlli = ttk.LabelFrame(
+            scheda, text=UI_TEXT["trasferisci_oggetto"], padding=10
+        )
+        controlli.grid(row=3, column=0, sticky="ew", pady=(10, 0))
+        controlli.columnconfigure(1, weight=1)
+        controlli.columnconfigure(3, weight=1)
+        ttk.Label(controlli, text=UI_TEXT["oggetto_da_trasferire"]).grid(
+            row=0, column=0, sticky="w", padx=(0, 8)
+        )
+        self.selettore_oggetto = ttk.Combobox(
+            controlli, state="readonly", width=28
+        )
+        self.selettore_oggetto.grid(row=0, column=1, sticky="ew", padx=(0, 16))
+        ttk.Label(controlli, text=UI_TEXT["nuovo_possessore"]).grid(
+            row=0, column=2, sticky="w", padx=(0, 8)
+        )
+        self.selettore_possessore = ttk.Combobox(
+            controlli, state="readonly", width=28
+        )
+        self.selettore_possessore.grid(row=0, column=3, sticky="ew", padx=(0, 16))
+        self.pulsante_trasferisci = ttk.Button(
+            controlli,
+            text=UI_TEXT["trasferisci_oggetto"],
+            command=self._trasferisci_oggetto_da_interfaccia,
+            state=tk.DISABLED,
+        )
+        self.pulsante_trasferisci.grid(row=0, column=4)
+
     def _carica_mondo_esistente(self) -> None:
         mondi = self.servizio.elenca_mondi()
         if mondi:
@@ -214,6 +324,7 @@ class ApplicazioneHaria:
         finally:
             self._caricamento_interfaccia = False
         self._aggiorna_cronologia()
+        self._aggiorna_stato_mondo()
         self.pulsante_salva.configure(state=tk.NORMAL)
         self.pulsante_esporta.configure(state=tk.NORMAL)
         self.pulsante_ripristina.configure(state=tk.NORMAL)
@@ -274,6 +385,143 @@ class ApplicazioneHaria:
             return
         self.radice.title(UI_TEXT["titolo_finestra"])
         self.etichetta_stato.configure(text=UI_TEXT["stato_pronto"])
+
+    def _aggiorna_stato_mondo(self) -> None:
+        for elemento in self.albero_stato_mondo.get_children():
+            self.albero_stato_mondo.delete(elemento)
+        for elemento in self.albero_eventi_entita.get_children():
+            self.albero_eventi_entita.delete(elemento)
+        self._oggetti_trasferibili = []
+        self._possessori_disponibili = []
+        self.selettore_oggetto["values"] = ()
+        self.selettore_possessore["values"] = ()
+        self.pulsante_trasferisci.configure(state=tk.DISABLED)
+        if self.mondo_corrente is None:
+            return
+
+        entita = self.servizio.stato_mondo.elenca_entita(self.mondo_corrente.id)
+        nomi = {voce.entity_id: voce.canonical_name for voce in entita}
+        for voce in entita:
+            self.albero_stato_mondo.insert(
+                "",
+                tk.END,
+                iid=voce.entity_id,
+                values=(
+                    voce.canonical_name,
+                    self._etichetta_tecnica(voce.entity_type),
+                    self._descrivi_posizione(voce, nomi),
+                    nomi.get(voce.holder_id, "—"),
+                    self._etichetta_tecnica(voce.status),
+                    voce.condition or "—",
+                    "Sì" if voce.accessibility else "No",
+                ),
+            )
+
+        self._oggetti_trasferibili = [
+            voce for voce in entita if voce.entity_type == TIPO_OGGETTO
+        ]
+        self._possessori_disponibili = [
+            voce for voce in entita if voce.entity_type == TIPO_PERSONAGGIO
+        ]
+        self.selettore_oggetto["values"] = tuple(
+            voce.canonical_name for voce in self._oggetti_trasferibili
+        )
+        self.selettore_possessore["values"] = tuple(
+            voce.canonical_name for voce in self._possessori_disponibili
+        )
+        if self._oggetti_trasferibili:
+            self.selettore_oggetto.current(0)
+        if self._possessori_disponibili:
+            self.selettore_possessore.current(0)
+        if self._oggetti_trasferibili and self._possessori_disponibili:
+            self.pulsante_trasferisci.configure(state=tk.NORMAL)
+
+    def _mostra_eventi_entita_selezionata(
+        self, _evento: object | None = None
+    ) -> None:
+        for elemento in self.albero_eventi_entita.get_children():
+            self.albero_eventi_entita.delete(elemento)
+        if self.mondo_corrente is None:
+            return
+        selezione = self.albero_stato_mondo.selection()
+        if not selezione:
+            return
+        entity_id = selezione[0]
+        eventi = self.servizio.stato_mondo.eventi_per_entita(
+            self.mondo_corrente.id, entity_id
+        )
+        if not eventi:
+            self.albero_eventi_entita.insert(
+                "", tk.END, values=("", "", UI_TEXT["nessun_evento"])
+            )
+        for evento in eventi:
+            self.albero_eventi_entita.insert(
+                "",
+                tk.END,
+                values=(
+                    evento.occurred_at,
+                    self._etichetta_tecnica(evento.event_type),
+                    evento.reason,
+                ),
+            )
+        for indice, oggetto in enumerate(self._oggetti_trasferibili):
+            if oggetto.entity_id == entity_id:
+                self.selettore_oggetto.current(indice)
+                break
+
+    def _trasferisci_oggetto_da_interfaccia(self) -> None:
+        if self.mondo_corrente is None:
+            return
+        indice_oggetto = self.selettore_oggetto.current()
+        indice_possessore = self.selettore_possessore.current()
+        if indice_oggetto < 0 or indice_possessore < 0:
+            messagebox.showwarning(
+                UI_TEXT["errore"], UI_TEXT["seleziona_trasferimento"]
+            )
+            return
+        oggetto = self._oggetti_trasferibili[indice_oggetto]
+        possessore = self._possessori_disponibili[indice_possessore]
+        try:
+            self.servizio.stato_mondo.trasferisci_oggetto(
+                self.mondo_corrente.id,
+                oggetto.entity_id,
+                possessore.entity_id,
+                reason="Trasferimento manuale dall'interfaccia.",
+            )
+            self._aggiorna_stato_mondo()
+            self.albero_stato_mondo.selection_set(oggetto.entity_id)
+            self.albero_stato_mondo.focus(oggetto.entity_id)
+            self._mostra_eventi_entita_selezionata()
+            messagebox.showinfo(
+                UI_TEXT["operazione_completata"],
+                UI_TEXT["trasferimento_completato"],
+            )
+        except ErroreHaria as errore:
+            messagebox.showerror(UI_TEXT["errore"], str(errore))
+
+    @staticmethod
+    def _etichetta_tecnica(valore: str) -> str:
+        traduzioni = {
+            "personaggio": "Personaggio",
+            "luogo": "Luogo",
+            "oggetto": "Oggetto",
+            "active": "Attivo",
+            "inaccessible": "Inaccessibile",
+            "spostamento_entita": "Spostamento entità",
+            "trasferimento_oggetto": "Trasferimento oggetto",
+            "cambio_stato": "Cambio stato",
+        }
+        return traduzioni.get(valore, valore.replace("_", " ").capitalize())
+
+    @staticmethod
+    def _descrivi_posizione(
+        entita: EntitaMondo, nomi: dict[str, str]
+    ) -> str:
+        posizione = nomi.get(entita.location_id, "—")
+        dettaglio = entita.state_data.get("position")
+        if isinstance(dettaglio, str) and dettaglio.strip():
+            return f"{posizione} — {dettaglio.strip()}"
+        return posizione
 
     def _aggiorna_cronologia(self) -> None:
         for elemento in self.albero_versioni.get_children():
@@ -400,6 +648,11 @@ class ApplicazioneHaria:
 
 def avvia(percorso_database: str | Path | None = None) -> None:
     radice = tk.Tk()
-    ApplicazioneHaria(radice, percorso_database or database_predefinito())
+    try:
+        ApplicazioneHaria(radice, percorso_database or database_predefinito())
+    except ErroreHaria as errore:
+        messagebox.showerror(UI_TEXT["errore"], str(errore))
+        radice.destroy()
+        return
     radice.mainloop()
 
