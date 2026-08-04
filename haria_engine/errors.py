@@ -24,3 +24,7 @@ class ErroreMigrazione(ErroreHaria):
 class ErroreStatoMondo(ErroreHaria):
     """Un'operazione strutturata sullo stato del mondo non è valida."""
 
+
+class ErroreMemoria(ErroreHaria):
+    """Una conoscenza soggettiva o una sua relazione non è valida."""
+

@@ -10,9 +10,18 @@ from pathlib import Path
 
 from .errors import (
     ErroreImportazione,
+    ErroreMemoria,
     ErroreMigrazione,
     ErroreStatoMondo,
     MondoNonTrovato,
+)
+from .memories import (
+    AssociazioneMemoria,
+    EntitaMemoria,
+    FonteMemoria,
+    MemoriaDaSalvare,
+    MemoriaPersonaggio,
+    importa_conoscenze_iniziali,
 )
 from .models import FileSorgente, Mondo, VersioneMondo
 from .world_state import (
@@ -67,7 +76,10 @@ class ArchivioSQLite:
         if versione == 1:
             self._migra_da_1_a_2()
             versione = 2
-        if versione != 2:
+        if versione == 2:
+            self._migra_da_2_a_3()
+            versione = 3
+        if versione != 3:
             raise ErroreMigrazione(
                 f"La versione schema {versione} del database non è supportata."
             )
@@ -271,6 +283,207 @@ class ArchivioSQLite:
                 "allo schema 1 senza dati parziali. Dettaglio: " + str(errore)
             ) from errore
 
+    def _migra_da_2_a_3(self) -> None:
+        istruzioni = (
+            """
+                CREATE TABLE memories (
+                    memory_id TEXT PRIMARY KEY,
+                    world_id TEXT NOT NULL,
+                    character_id TEXT NOT NULL,
+                    event_id TEXT,
+                    knowledge_type TEXT NOT NULL,
+                    source_type TEXT NOT NULL,
+                    source_entity_id TEXT,
+                    learned_at TEXT NOT NULL,
+                    certainty INTEGER NOT NULL,
+                    content TEXT NOT NULL,
+                    interpretation TEXT,
+                    associated_emotion TEXT,
+                    status TEXT NOT NULL,
+                    supersedes_memory_id TEXT,
+                    created_at TEXT NOT NULL,
+                    UNIQUE (memory_id, world_id),
+                    UNIQUE (memory_id, world_id, character_id),
+                    FOREIGN KEY (world_id, character_id)
+                        REFERENCES world_entities(world_id, entity_id)
+                        ON DELETE RESTRICT,
+                    FOREIGN KEY (event_id, world_id)
+                        REFERENCES events(event_id, world_id)
+                        ON DELETE RESTRICT,
+                    FOREIGN KEY (world_id, source_entity_id)
+                        REFERENCES world_entities(world_id, entity_id)
+                        ON DELETE RESTRICT,
+                    FOREIGN KEY (supersedes_memory_id, world_id, character_id)
+                        REFERENCES memories(memory_id, world_id, character_id)
+                        ON DELETE RESTRICT,
+                    CHECK (knowledge_type IN (
+                        'observed_fact', 'reported_fact', 'inference',
+                        'belief', 'canonical_knowledge'
+                    )),
+                    CHECK (source_type IN (
+                        'direct_observation', 'told_by_character', 'inference',
+                        'imported_background', 'self_experience'
+                    )),
+                    CHECK (status IN (
+                        'active', 'corrected', 'contradicted', 'superseded'
+                    )),
+                    CHECK (typeof(certainty) = 'integer' AND certainty BETWEEN 0 AND 100),
+                    CHECK (length(trim(content)) > 0),
+                    CHECK (
+                        supersedes_memory_id IS NULL
+                        OR supersedes_memory_id <> memory_id
+                    )
+                )
+            """,
+            """
+                CREATE TABLE memory_entities (
+                    memory_id TEXT NOT NULL,
+                    world_id TEXT NOT NULL,
+                    entity_id TEXT NOT NULL,
+                    role TEXT NOT NULL,
+                    PRIMARY KEY (memory_id, entity_id, role),
+                    FOREIGN KEY (memory_id, world_id)
+                        REFERENCES memories(memory_id, world_id)
+                        ON DELETE RESTRICT,
+                    FOREIGN KEY (world_id, entity_id)
+                        REFERENCES world_entities(world_id, entity_id)
+                        ON DELETE RESTRICT,
+                    CHECK (role IN ('subject', 'source', 'location', 'related'))
+                )
+            """,
+            """
+                CREATE TABLE memory_sources (
+                    memory_id TEXT NOT NULL,
+                    source_memory_id TEXT NOT NULL,
+                    world_id TEXT NOT NULL,
+                    character_id TEXT NOT NULL,
+                    position INTEGER NOT NULL,
+                    PRIMARY KEY (memory_id, source_memory_id),
+                    UNIQUE (memory_id, position),
+                    FOREIGN KEY (memory_id, world_id, character_id)
+                        REFERENCES memories(memory_id, world_id, character_id)
+                        ON DELETE RESTRICT,
+                    FOREIGN KEY (source_memory_id, world_id, character_id)
+                        REFERENCES memories(memory_id, world_id, character_id)
+                        ON DELETE RESTRICT,
+                    CHECK (memory_id <> source_memory_id),
+                    CHECK (typeof(position) = 'integer' AND position > 0)
+                )
+            """,
+            """
+                CREATE INDEX idx_memories_character_time
+                    ON memories(world_id, character_id, learned_at, created_at)
+            """,
+            """
+                CREATE INDEX idx_memories_event
+                    ON memories(world_id, event_id)
+            """,
+            """
+                CREATE UNIQUE INDEX idx_memories_single_successor
+                    ON memories(supersedes_memory_id)
+                    WHERE supersedes_memory_id IS NOT NULL
+            """,
+            """
+                CREATE INDEX idx_memory_entities_entity
+                    ON memory_entities(world_id, entity_id, memory_id)
+            """,
+            """
+                CREATE INDEX idx_memory_sources_source
+                    ON memory_sources(source_memory_id, memory_id)
+            """,
+            """
+                CREATE TRIGGER memories_character_must_be_character
+                BEFORE INSERT ON memories
+                WHEN NOT EXISTS (
+                    SELECT 1 FROM world_entities
+                    WHERE world_id = NEW.world_id
+                      AND entity_id = NEW.character_id
+                      AND entity_type = 'personaggio'
+                )
+                BEGIN
+                    SELECT RAISE(ABORT, 'La memoria deve appartenere a un personaggio valido.');
+                END
+            """,
+            """
+                CREATE TRIGGER memories_append_only_update
+                BEFORE UPDATE ON memories
+                BEGIN
+                    SELECT RAISE(ABORT, 'Le memorie sono immutabili: aggiornamento vietato.');
+                END
+            """,
+            """
+                CREATE TRIGGER memories_append_only_delete
+                BEFORE DELETE ON memories
+                BEGIN
+                    SELECT RAISE(ABORT, 'Le memorie sono immutabili: cancellazione vietata.');
+                END
+            """,
+            """
+                CREATE TRIGGER memory_entities_append_only_update
+                BEFORE UPDATE ON memory_entities
+                BEGIN
+                    SELECT RAISE(ABORT, 'Le associazioni delle memorie sono immutabili: aggiornamento vietato.');
+                END
+            """,
+            """
+                CREATE TRIGGER memory_entities_append_only_delete
+                BEFORE DELETE ON memory_entities
+                BEGIN
+                    SELECT RAISE(ABORT, 'Le associazioni delle memorie sono immutabili: cancellazione vietata.');
+                END
+            """,
+            """
+                CREATE TRIGGER memory_sources_append_only_update
+                BEFORE UPDATE ON memory_sources
+                BEGIN
+                    SELECT RAISE(ABORT, 'Le fonti delle memorie sono immutabili: aggiornamento vietato.');
+                END
+            """,
+            """
+                CREATE TRIGGER memory_sources_append_only_delete
+                BEFORE DELETE ON memory_sources
+                BEGIN
+                    SELECT RAISE(ABORT, 'Le fonti delle memorie sono immutabili: cancellazione vietata.');
+                END
+            """,
+        )
+        self._connessione.execute("BEGIN IMMEDIATE")
+        try:
+            for istruzione in istruzioni:
+                self._connessione.execute(istruzione)
+            mondi = self._connessione.execute(
+                "SELECT id FROM worlds ORDER BY id"
+            ).fetchall()
+            for mondo in mondi:
+                memorie = importa_conoscenze_iniziali(
+                    self._file_sorgente_senza_validazione(mondo["id"]),
+                    mondo["id"],
+                )
+                self._inserisci_memorie_iniziali(memorie)
+            self._connessione.execute("PRAGMA user_version = 3")
+            self._connessione.commit()
+        except (ErroreImportazione, sqlite3.Error) as errore:
+            self._connessione.rollback()
+            raise ErroreMigrazione(
+                "La migrazione allo schema 3 non è riuscita; il database è rimasto "
+                "allo schema 2 senza dati parziali. Dettaglio: " + str(errore)
+            ) from errore
+
+    def _inserisci_memorie_iniziali(
+        self, memorie: Iterable[MemoriaDaSalvare]
+    ) -> None:
+        self._connessione.executemany(
+            """
+            INSERT INTO memories (
+                memory_id, world_id, character_id, event_id, knowledge_type,
+                source_type, source_entity_id, learned_at, certainty, content,
+                interpretation, associated_emotion, status,
+                supersedes_memory_id, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (self._parametri_memoria(memoria) for memoria in memorie),
+        )
+
     def _inserisci_entita(
         self, mondo_id: str, entita: Iterable[EntitaImportata]
     ) -> None:
@@ -348,6 +561,11 @@ class ArchivioSQLite:
         file_sorgente: Iterable[FileSorgente],
         entita: Iterable[EntitaImportata],
     ) -> Mondo:
+        elenco_file_sorgente = list(file_sorgente)
+        elenco_entita = list(entita)
+        memorie_iniziali = importa_conoscenze_iniziali(
+            elenco_file_sorgente, mondo_id
+        )
         if self._connessione.execute(
             "SELECT 1 FROM worlds WHERE id = ?", (mondo_id,)
         ).fetchone():
@@ -388,10 +606,11 @@ class ArchivioSQLite:
                 """,
                 (
                     (mondo_id, file.percorso_relativo, file.contenuto, file.sha256)
-                    for file in file_sorgente
+                    for file in elenco_file_sorgente
                 ),
             )
-            self._inserisci_entita(mondo_id, entita)
+            self._inserisci_entita(mondo_id, elenco_entita)
+            self._inserisci_memorie_iniziali(memorie_iniziali)
         return self.carica_mondo(mondo_id)
 
     def elenca_mondi(self) -> list[Mondo]:
@@ -605,6 +824,22 @@ class ArchivioSQLite:
         ).fetchall()
         return [self._evento_da_riga(riga) for riga in righe]
 
+    def carica_evento(self, mondo_id: str, event_id: str) -> EventoMondo:
+        self.carica_mondo(mondo_id)
+        riga = self._connessione.execute(
+            """
+            SELECT event_id, world_id, event_type, occurred_at, actor_id,
+                   target_id, location_id, payload, reason, created_at
+            FROM events WHERE world_id = ? AND event_id = ?
+            """,
+            (mondo_id, event_id),
+        ).fetchone()
+        if riga is None:
+            raise ErroreMemoria(
+                "L'evento richiesto non esiste nel mondo selezionato."
+            )
+        return self._evento_da_riga(riga)
+
     def eventi_per_entita(
         self, mondo_id: str, entity_id: str
     ) -> list[EventoMondo]:
@@ -643,6 +878,252 @@ class ArchivioSQLite:
             reason=riga["reason"],
             created_at=riga["created_at"],
         )
+
+    def registra_memoria(
+        self,
+        memoria: MemoriaDaSalvare,
+        associazioni: Iterable[AssociazioneMemoria],
+        fonti: Iterable[FonteMemoria],
+    ) -> None:
+        elenco_associazioni = list(associazioni)
+        elenco_fonti = list(fonti)
+        try:
+            with self._connessione:
+                self._inserisci_memoria(memoria)
+                self._connessione.executemany(
+                    """
+                    INSERT INTO memory_entities (
+                        memory_id, world_id, entity_id, role
+                    ) VALUES (?, ?, ?, ?)
+                    """,
+                    (
+                        (
+                            memoria.memory_id,
+                            memoria.world_id,
+                            associazione.entity_id,
+                            associazione.role,
+                        )
+                        for associazione in elenco_associazioni
+                    ),
+                )
+                self._connessione.executemany(
+                    """
+                    INSERT INTO memory_sources (
+                        memory_id, source_memory_id, world_id,
+                        character_id, position
+                    ) VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (
+                        (
+                            memoria.memory_id,
+                            fonte.source_memory_id,
+                            memoria.world_id,
+                            memoria.character_id,
+                            fonte.position,
+                        )
+                        for fonte in elenco_fonti
+                    ),
+                )
+        except sqlite3.Error as errore:
+            raise ErroreMemoria(
+                "La memoria non è stata salvata: memoria, associazioni e fonti "
+                "sono rimaste invariate."
+            ) from errore
+
+    def _inserisci_memoria(self, memoria: MemoriaDaSalvare) -> None:
+        self._connessione.execute(
+            """
+            INSERT INTO memories (
+                memory_id, world_id, character_id, event_id, knowledge_type,
+                source_type, source_entity_id, learned_at, certainty, content,
+                interpretation, associated_emotion, status,
+                supersedes_memory_id, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            self._parametri_memoria(memoria),
+        )
+
+    @staticmethod
+    def _parametri_memoria(memoria: MemoriaDaSalvare) -> tuple[object, ...]:
+        return (
+            memoria.memory_id,
+            memoria.world_id,
+            memoria.character_id,
+            memoria.event_id,
+            memoria.knowledge_type,
+            memoria.source_type,
+            memoria.source_entity_id,
+            memoria.learned_at,
+            memoria.certainty,
+            memoria.content,
+            memoria.interpretation,
+            memoria.associated_emotion,
+            memoria.status,
+            memoria.supersedes_memory_id,
+            memoria.created_at,
+        )
+
+    def carica_memoria(
+        self, mondo_id: str, memory_id: str
+    ) -> MemoriaPersonaggio:
+        self.carica_mondo(mondo_id)
+        righe = self._seleziona_memorie(
+            "m.world_id = ? AND m.memory_id = ?",
+            (mondo_id, memory_id),
+        )
+        if not righe:
+            raise ErroreMemoria(
+                "La memoria richiesta non esiste nel mondo selezionato."
+            )
+        return self._completa_memorie(righe)[0]
+
+    def elenca_memorie_personaggio(
+        self,
+        mondo_id: str,
+        character_id: str,
+        *,
+        event_id: str | None = None,
+        entity_id: str | None = None,
+        source_type: str | None = None,
+        solo_correnti: bool = True,
+    ) -> list[MemoriaPersonaggio]:
+        condizioni = ["m.world_id = ?", "m.character_id = ?"]
+        parametri: list[object] = [mondo_id, character_id]
+        if event_id is not None:
+            condizioni.append("m.event_id = ?")
+            parametri.append(event_id)
+        if source_type is not None:
+            condizioni.append("m.source_type = ?")
+            parametri.append(source_type)
+        if entity_id is not None:
+            condizioni.append(
+                """
+                EXISTS (
+                    SELECT 1 FROM memory_entities AS me
+                    WHERE me.memory_id = m.memory_id
+                      AND me.world_id = m.world_id
+                      AND me.entity_id = ?
+                )
+                """
+            )
+            parametri.append(entity_id)
+        if solo_correnti:
+            condizioni.append(
+                """
+                NOT EXISTS (
+                    SELECT 1 FROM memories AS successiva
+                    WHERE successiva.world_id = m.world_id
+                      AND successiva.character_id = m.character_id
+                      AND successiva.supersedes_memory_id = m.memory_id
+                )
+                """
+            )
+        righe = self._seleziona_memorie(
+            " AND ".join(condizioni), tuple(parametri)
+        )
+        return self._completa_memorie(righe)
+
+    def _seleziona_memorie(
+        self, condizione: str, parametri: tuple[object, ...]
+    ) -> list[sqlite3.Row]:
+        return self._connessione.execute(
+            f"""
+            SELECT m.memory_id, m.world_id, m.character_id, m.event_id,
+                   m.knowledge_type, m.source_type, m.source_entity_id,
+                   fonte.canonical_name AS source_name, m.learned_at,
+                   m.certainty, m.content, m.interpretation,
+                   m.associated_emotion, m.status, m.supersedes_memory_id,
+                   m.created_at,
+                   CASE WHEN EXISTS (
+                       SELECT 1 FROM memories AS successiva
+                       WHERE successiva.world_id = m.world_id
+                         AND successiva.character_id = m.character_id
+                         AND successiva.supersedes_memory_id = m.memory_id
+                   ) THEN 0 ELSE 1 END AS is_current,
+                   CASE WHEN EXISTS (
+                       SELECT 1 FROM memories AS successiva
+                       WHERE successiva.world_id = m.world_id
+                         AND successiva.character_id = m.character_id
+                         AND successiva.supersedes_memory_id = m.memory_id
+                   ) THEN 'superseded' ELSE m.status END AS effective_status
+            FROM memories AS m
+            LEFT JOIN world_entities AS fonte
+              ON fonte.world_id = m.world_id
+             AND fonte.entity_id = m.source_entity_id
+            WHERE {condizione}
+            ORDER BY m.learned_at, m.created_at, m.memory_id
+            """,
+            parametri,
+        ).fetchall()
+
+    def _completa_memorie(
+        self, righe: list[sqlite3.Row]
+    ) -> list[MemoriaPersonaggio]:
+        if not righe:
+            return []
+        memory_ids = [riga["memory_id"] for riga in righe]
+        segnaposto = ",".join("?" for _ in memory_ids)
+        righe_entita = self._connessione.execute(
+            f"""
+            SELECT me.memory_id, me.entity_id, me.role, e.canonical_name
+            FROM memory_entities AS me
+            JOIN world_entities AS e
+              ON e.world_id = me.world_id AND e.entity_id = me.entity_id
+            WHERE me.memory_id IN ({segnaposto})
+            ORDER BY me.memory_id, me.role, e.canonical_name
+            """,
+            tuple(memory_ids),
+        ).fetchall()
+        righe_fonti = self._connessione.execute(
+            f"""
+            SELECT memory_id, source_memory_id
+            FROM memory_sources
+            WHERE memory_id IN ({segnaposto})
+            ORDER BY memory_id, position
+            """,
+            tuple(memory_ids),
+        ).fetchall()
+        entita_per_memoria: dict[str, list[EntitaMemoria]] = {
+            memory_id: [] for memory_id in memory_ids
+        }
+        for riga in righe_entita:
+            entita_per_memoria[riga["memory_id"]].append(
+                EntitaMemoria(
+                    entity_id=riga["entity_id"],
+                    role=riga["role"],
+                    canonical_name=riga["canonical_name"],
+                )
+            )
+        fonti_per_memoria: dict[str, list[str]] = {
+            memory_id: [] for memory_id in memory_ids
+        }
+        for riga in righe_fonti:
+            fonti_per_memoria[riga["memory_id"]].append(riga["source_memory_id"])
+        return [
+            MemoriaPersonaggio(
+                memory_id=riga["memory_id"],
+                world_id=riga["world_id"],
+                character_id=riga["character_id"],
+                event_id=riga["event_id"],
+                knowledge_type=riga["knowledge_type"],
+                source_type=riga["source_type"],
+                source_entity_id=riga["source_entity_id"],
+                source_name=riga["source_name"],
+                learned_at=riga["learned_at"],
+                certainty=int(riga["certainty"]),
+                content=riga["content"],
+                interpretation=riga["interpretation"],
+                associated_emotion=riga["associated_emotion"],
+                status=riga["status"],
+                supersedes_memory_id=riga["supersedes_memory_id"],
+                created_at=riga["created_at"],
+                is_current=bool(riga["is_current"]),
+                effective_status=riga["effective_status"],
+                entities=tuple(entita_per_memoria[riga["memory_id"]]),
+                source_memory_ids=tuple(fonti_per_memoria[riga["memory_id"]]),
+            )
+            for riga in righe
+        ]
 
     def applica_evento_e_stati(
         self,
