@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
-from .errors import ErroreImportazione, ErroreMemoria
+from .errors import ErroreImportazione, ErroreMemoria, ErroreStatoMondo
 from .models import FileSorgente
 from .world_state import TIPO_PERSONAGGIO
 
@@ -370,7 +370,10 @@ class ServizioMemorie:
             status=status,
             supersedes_memory_id=previous_memory_id,
         )
-        associazioni = self._associazioni_correlate(world_id, entity_ids)
+        associazioni = {
+            (entita.entity_id, entita.role) for entita in precedente.entities
+        }
+        associazioni.update(self._associazioni_correlate(world_id, entity_ids))
         return self._salva(memoria, associazioni, ())
 
     def elenca_memorie_personaggio(
@@ -385,7 +388,7 @@ class ServizioMemorie:
     ) -> list[MemoriaPersonaggio]:
         self._richiedi_personaggio(world_id, character_id)
         if entity_id is not None:
-            self.archivio.carica_entita(world_id, entity_id)
+            self._richiedi_entita(world_id, entity_id)
         if source_type is not None and source_type not in SOURCE_TYPES:
             raise ErroreMemoria("Il tipo di fonte richiesto non è valido.")
         return self.archivio.elenca_memorie_personaggio(
@@ -398,19 +401,27 @@ class ServizioMemorie:
         )
 
     def _richiedi_personaggio(self, world_id: str, entity_id: str):
-        entita = self.archivio.carica_entita(world_id, entity_id)
+        entita = self._richiedi_entita(world_id, entity_id)
         if entita.entity_type != TIPO_PERSONAGGIO:
             raise ErroreMemoria(
                 f"L'entità “{entita.canonical_name}” non è un personaggio."
             )
         return entita
 
+    def _richiedi_entita(self, world_id: str, entity_id: str):
+        try:
+            return self.archivio.carica_entita(world_id, entity_id)
+        except ErroreStatoMondo as errore:
+            raise ErroreMemoria(
+                "L'entità collegata non esiste nel mondo selezionato."
+            ) from errore
+
     def _associazioni_correlate(
         self, world_id: str, entity_ids: Iterable[str]
     ) -> set[tuple[str, str]]:
         associazioni: set[tuple[str, str]] = set()
         for entity_id in entity_ids:
-            self.archivio.carica_entita(world_id, entity_id)
+            self._richiedi_entita(world_id, entity_id)
             associazioni.add((entity_id, "related"))
         return associazioni
 
