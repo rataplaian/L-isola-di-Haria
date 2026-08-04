@@ -23,6 +23,22 @@ Questa versione implementa esclusivamente il primo incarico: importa una mini-Bi
 
 L'interfaccia non mostra JSON o tabelle del database. Le impostazioni narrative presenti nel pacchetto sono campi leggibili e modificabili in italiano.
 
+## Task 002 — Stato corrente ed eventi
+
+Lo schema SQLite 2 aggiunge personaggi, luoghi e oggetti con canone importato e
+stato corrente separati. Le operazioni strutturate di spostamento, trasferimento
+e cambio di stato registrano un evento immutabile nella stessa transazione dello
+stato aggiornato. Eventuali errori annullano entrambe le scritture.
+
+La scheda **Stato del mondo** mostra nomi, tipi, posizioni, possessori, stato,
+condizione, accessibilità e cronologia degli eventi senza esporre dati tecnici.
+Da questa scheda è possibile trasferire manualmente un oggetto a un personaggio.
+
+I database del Task 001 vengono migrati automaticamente usando soltanto le
+fotografie già conservate in `source_files`; la cartella originale non viene
+riletta. Se le fotografie richieste sono incomplete o non valide, la migrazione
+viene annullata e il database resta allo schema 1.
+
 ## Requisiti
 
 - Python 3.11 o successivo;
@@ -70,6 +86,8 @@ py -3 -m haria_engine --database C:\percorso\haria.sqlite3
 3. Selezionare **Salva nuova versione**: ogni salvataggio resta recuperabile.
 4. Usare **Cronologia versioni** per ripristinare una versione; anche il ripristino crea una nuova versione.
 5. Selezionare **Esporta mondo** e scegliere una cartella di destinazione.
+6. Aprire **Stato del mondo** per consultare entità ed eventi o trasferire un
+   oggetto tramite i controlli italiani.
 
 ## Test e verifica di avvio
 
@@ -87,8 +105,10 @@ python3 -m unittest discover -s tests -v
 python3 -m haria_engine --check
 ```
 
+La suite corrente contiene **47 test automatici** per Task 001 e Task 002.
+
 ## Dati e sicurezza dei sorgenti
 
-La mini-Bibbia selezionata viene soltanto letta. I suoi file non vengono modificati o cancellati. Lo stato corrente, le fotografie dei sorgenti e la cronologia sono conservati nel database SQLite; l'esportazione viene sempre creata in una nuova cartella.
+La mini-Bibbia selezionata viene soltanto letta. I suoi file non vengono modificati o cancellati. Il canone importato, lo stato corrente, il registro eventi, le fotografie dei sorgenti e la cronologia sono conservati separatamente nel database SQLite; l'esportazione viene sempre creata in una nuova cartella.
 
-Le motivazioni dello stack e i confini architetturali sono descritti in `docs/TECHNICAL_DECISIONS.md`. Lo stato puntuale del primo incarico è in `docs/TASK_001_STATUS.md`.
+Le motivazioni dello stack e i confini architetturali sono descritti in `docs/TECHNICAL_DECISIONS.md`. Gli stati puntuali degli incarichi sono in `docs/TASK_001_STATUS.md` e `docs/TASK_002_STATUS.md`.
