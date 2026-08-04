@@ -26,6 +26,12 @@ cancellazioni.
 ### 6. Memorie soggettive
 Ogni personaggio conosce soltanto ciò che ha osservato, dedotto o appreso.
 
+Nel Task 003, `haria_engine/memories.py` contiene modelli e servizio tipizzati.
+`haria_engine/storage.py` inserisce memoria, associazioni alle entità e memorie
+sorgente nella stessa transazione. `memories`, `memory_entities` e
+`memory_sources` sono protette da trigger contro aggiornamenti e cancellazioni.
+Una correzione aggiunge una nuova memoria e non riscrive quella storica.
+
 ### 7. Motore narrativo
 Prepara il contesto e interroga l'LLM locale.
 
@@ -54,7 +60,7 @@ Interfaccia sostituibile. Prima implementazione: Ollama.
 La narrazione non è la fonte della verità.
 Il database è la fonte della verità.
 
-## Confini implementati nel Task 002
+## Confini implementati fino al Task 003
 
 - Il canone originale resta immutabile in `world_entities.canonical_data` e
   nelle fotografie sorgente.
@@ -62,7 +68,16 @@ Il database è la fonte della verità.
   `entity_state`.
 - Gli eventi sono righe immutabili in `events`; `event_entities` ne registra le
   entità coinvolte e permette una cronologia completa senza creare duplicati.
+- Le memorie appartengono a un solo personaggio e restano separate da canone,
+  stato ed eventi. La presenza a un evento non crea automaticamente memoria.
+- `memory_entities` rende filtrabili soggetti, fonti, luoghi ed entità correlate
+  senza interpretare il testo; `memory_sources` conserva l'ordine delle memorie
+  usate per un'inferenza.
+- Le correzioni formano catene lineari append-only. `status` conserva la natura
+  immutabile della nuova memoria; `is_current` ed `effective_status` sono
+  calcolati verificando l'esistenza di un successore.
 - La configurazione narrativa continua a essere versionata separatamente.
-- Memorie soggettive, simulazione e provider LLM non sono implementati.
+- Simulazione, generazione narrativa e provider LLM non sono implementati.
 
 La GUI legge modelli tipizzati e non accede direttamente a SQL o dati tecnici.
+La vista delle memorie usa query aggregate per fonti ed entità collegate.

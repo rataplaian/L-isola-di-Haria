@@ -21,9 +21,11 @@
 - eventi;
 - persistenza SQLite.
 
-## M3 — Memorie soggettive
-- conoscenze per personaggio;
-- test presenza e osservazione.
+## M3 — Memorie soggettive — implementato
+- conoscenze separate per personaggio;
+- osservazioni, racconti, inferenze e correzioni append-only;
+- cronologia e vista corrente;
+- test di presenza, soggettività, persistenza e rollback.
 
 ## M4 — Ollama
 - provider locale;
