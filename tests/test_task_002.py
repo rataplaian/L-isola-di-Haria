@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import hashlib
+import locale
 import shutil
 import sqlite3
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -234,6 +237,31 @@ class TestMigrazioneSchema2(unittest.TestCase):
 
         self.assertEqual(2, versione)
         self.assertEqual(8, len(entita))
+
+    def test_verifica_cli_mostra_errore_migrazione_in_italiano(self) -> None:
+        crea_database_schema_1(
+            self.database, self.sorgente, ometti_file="locations.json"
+        )
+
+        processo = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "haria_engine",
+                "--check",
+                "--database",
+                str(self.database),
+            ],
+            cwd=RADICE_PROGETTO,
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding=locale.getpreferredencoding(False),
+        )
+
+        self.assertEqual(1, processo.returncode)
+        self.assertIn("Errore: La migrazione allo schema 2 non è riuscita", processo.stderr)
+        self.assertNotIn("Traceback", processo.stderr)
 
 
 class TestStatoCorrenteEventi(unittest.TestCase):

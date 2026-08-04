@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
 
 from .app import avvia
+from .errors import ErroreHaria
 from .paths import database_predefinito
 from .service import ServizioMondi
 
@@ -27,8 +29,12 @@ def main() -> None:
     )
     argomenti = parser.parse_args()
     if argomenti.check:
-        with ServizioMondi(argomenti.database):
-            pass
+        try:
+            with ServizioMondi(argomenti.database):
+                pass
+        except ErroreHaria as errore:
+            print(f"Errore: {errore}", file=sys.stderr)
+            raise SystemExit(1) from errore
         print("Verifica di avvio completata: archivio SQLite disponibile.")
         return
     avvia(argomenti.database)

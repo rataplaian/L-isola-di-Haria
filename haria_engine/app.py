@@ -648,6 +648,11 @@ class ApplicazioneHaria:
 
 def avvia(percorso_database: str | Path | None = None) -> None:
     radice = tk.Tk()
-    ApplicazioneHaria(radice, percorso_database or database_predefinito())
+    try:
+        ApplicazioneHaria(radice, percorso_database or database_predefinito())
+    except ErroreHaria as errore:
+        messagebox.showerror(UI_TEXT["errore"], str(errore))
+        radice.destroy()
+        return
     radice.mainloop()
 
