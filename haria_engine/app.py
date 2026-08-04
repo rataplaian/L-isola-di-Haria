@@ -313,7 +313,14 @@ class ApplicazioneHaria:
             scheda, orient=tk.VERTICAL, command=self.albero_memorie.yview
         )
         scorrimento.grid(row=1, column=1, sticky="ns")
-        self.albero_memorie.configure(yscrollcommand=scorrimento.set)
+        scorrimento_orizzontale = ttk.Scrollbar(
+            scheda, orient=tk.HORIZONTAL, command=self.albero_memorie.xview
+        )
+        scorrimento_orizzontale.grid(row=2, column=0, sticky="ew")
+        self.albero_memorie.configure(
+            yscrollcommand=scorrimento.set,
+            xscrollcommand=scorrimento_orizzontale.set,
+        )
 
     def _costruisci_scheda_stato_mondo(self) -> None:
         scheda = ttk.Frame(self.schede, padding=10)
