@@ -105,6 +105,16 @@ def etichetta_impostazione(chiave: str) -> str:
     )
 
 
+def etichetta_stato_memoria(effective_status: str) -> str:
+    etichette = {
+        "active": "Attiva",
+        "corrected": "Corretta",
+        "contradicted": "Contraddetta",
+        "superseded": "Superata",
+    }
+    return etichette.get(effective_status, "Stato non riconosciuto")
+
+
 class ApplicazioneHaria:
     def __init__(self, radice: tk.Tk, percorso_database: str | Path) -> None:
         self.radice = radice
@@ -618,7 +628,7 @@ class ApplicazioneHaria:
                     memoria.learned_at,
                     memoria.interpretation or "—",
                     memoria.associated_emotion or "—",
-                    "Corrente" if memoria.is_current else "Superata",
+                    etichetta_stato_memoria(memoria.effective_status),
                 ),
                 tags=(etichetta,) if etichetta else (),
             )

@@ -10,7 +10,7 @@ import uuid
 from dataclasses import replace
 from pathlib import Path
 
-from haria_engine.app import UI_TEXT
+from haria_engine.app import UI_TEXT, etichetta_stato_memoria
 from haria_engine.errors import ErroreMemoria, ErroreMigrazione
 from haria_engine.memories import (
     AssociazioneMemoria,
@@ -410,6 +410,61 @@ class TestMemorieSoggettive(unittest.TestCase):
         self.assertIn(nuova.memory_id, {m.memory_id for m in correnti})
         self.assertNotIn(vecchia.memory_id, {m.memory_id for m in correnti})
         self.assertTrue({vecchia.memory_id, nuova.memory_id}.issubset({m.memory_id for m in cronologia}))
+
+    def test_gui_mostra_memoria_active_corrente_come_attiva(self) -> None:
+        memoria = self._memoria_importata("akari_mori")
+        self.assertTrue(memoria.is_current)
+        self.assertEqual("active", memoria.effective_status)
+        self.assertEqual("Attiva", etichetta_stato_memoria(memoria.effective_status))
+
+    def test_gui_mostra_memoria_corrected_corrente_come_corretta(self) -> None:
+        iniziale = self._memoria_importata("akari_mori")
+        corretta = self.servizio.memorie.correggi_memoria(
+            self.mondo.id,
+            "akari_mori",
+            iniziale.memory_id,
+            "Conoscenza iniziale corretta.",
+            90,
+        )
+        self.assertTrue(corretta.is_current)
+        self.assertEqual("corrected", corretta.effective_status)
+        self.assertEqual(
+            "Corretta", etichetta_stato_memoria(corretta.effective_status)
+        )
+
+    def test_gui_mostra_memoria_contradicted_corrente_come_contraddetta(self) -> None:
+        iniziale = self._memoria_importata("akari_mori")
+        contraddetta = self.servizio.memorie.correggi_memoria(
+            self.mondo.id,
+            "akari_mori",
+            iniziale.memory_id,
+            "La conoscenza iniziale è falsa.",
+            90,
+            status="contradicted",
+        )
+        self.assertTrue(contraddetta.is_current)
+        self.assertEqual("contradicted", contraddetta.effective_status)
+        self.assertEqual(
+            "Contraddetta", etichetta_stato_memoria(contraddetta.effective_status)
+        )
+
+    def test_gui_mostra_memoria_precedente_non_corrente_come_superata(self) -> None:
+        iniziale = self._memoria_importata("akari_mori")
+        self.servizio.memorie.correggi_memoria(
+            self.mondo.id,
+            "akari_mori",
+            iniziale.memory_id,
+            "Conoscenza sostitutiva.",
+            90,
+        )
+        storica = self.servizio.archivio.carica_memoria(
+            self.mondo.id, iniziale.memory_id
+        )
+        self.assertFalse(storica.is_current)
+        self.assertEqual("superseded", storica.effective_status)
+        self.assertEqual(
+            "Superata", etichetta_stato_memoria(storica.effective_status)
+        )
 
     def test_catena_lineare_valida_con_piu_correzioni(self) -> None:
         iniziale = self._memoria_importata("akari_mori")
