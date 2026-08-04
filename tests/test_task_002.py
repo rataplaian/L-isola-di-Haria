@@ -36,6 +36,7 @@ def crea_database_schema_1(
     sorgente: Path,
     *,
     ometti_file: str | None = None,
+    corrompi_file: str | None = None,
 ) -> None:
     percorso.parent.mkdir(parents=True, exist_ok=True)
     connessione = sqlite3.connect(percorso)
@@ -126,6 +127,8 @@ def crea_database_schema_1(
             if relativo == ometti_file:
                 continue
             contenuto = file.read_bytes()
+            if relativo == corrompi_file:
+                contenuto = b"{contenuto non valido"
             connessione.execute(
                 """
                 INSERT INTO source_files (
@@ -195,6 +198,28 @@ class TestMigrazioneSchema2(unittest.TestCase):
         self.assertNotIn("world_entities", tabelle)
         self.assertNotIn("entity_state", tabelle)
         self.assertNotIn("events", tabelle)
+
+    def test_migrazione_file_archiviato_non_valido_esegue_rollback(self) -> None:
+        crea_database_schema_1(
+            self.database, self.sorgente, corrompi_file="characters.json"
+        )
+
+        with self.assertRaisesRegex(ErroreMigrazione, "dati validi"):
+            ServizioMondi(self.database)
+
+        connessione = sqlite3.connect(self.database)
+        try:
+            versione = connessione.execute("PRAGMA user_version").fetchone()[0]
+            entita_presente = connessione.execute(
+                """
+                SELECT 1 FROM sqlite_master
+                WHERE type = 'table' AND name = 'world_entities'
+                """
+            ).fetchone()
+        finally:
+            connessione.close()
+        self.assertEqual(1, versione)
+        self.assertIsNone(entita_presente)
 
     def test_riapertura_schema_2_non_duplica_entita(self) -> None:
         crea_database_schema_1(self.database, self.sorgente)
