@@ -201,6 +201,7 @@ class TestMigrazioneSchema2(unittest.TestCase):
         self.assertNotIn("world_entities", tabelle)
         self.assertNotIn("entity_state", tabelle)
         self.assertNotIn("events", tabelle)
+        self.assertNotIn("event_entities", tabelle)
 
     def test_migrazione_file_archiviato_non_valido_esegue_rollback(self) -> None:
         crea_database_schema_1(
@@ -319,6 +320,67 @@ class TestStatoCorrenteEventi(unittest.TestCase):
         self.assertIsNone(dopo.canonical_data["owner_id"])
         self.assertEqual("luca", dopo.holder_id)
 
+    def test_cambia_stato_modifica_solo_current_status(self) -> None:
+        assert self.servizio is not None
+        connessione = self.servizio.archivio._connessione
+        entita_prima = self.stato.carica_entita(self.mondo.id, "infirmary")
+        riga_canonica_prima = tuple(
+            connessione.execute(
+                "SELECT * FROM world_entities WHERE world_id = ? AND entity_id = ?",
+                (self.mondo.id, "infirmary"),
+            ).fetchone()
+        )
+
+        self.stato.cambia_stato(
+            self.mondo.id,
+            "infirmary",
+            status="inaccessible",
+            reason="L'infermeria viene chiusa temporaneamente.",
+        )
+
+        entita_dopo = self.stato.carica_entita(self.mondo.id, "infirmary")
+        riga_canonica_dopo = tuple(
+            connessione.execute(
+                "SELECT * FROM world_entities WHERE world_id = ? AND entity_id = ?",
+                (self.mondo.id, "infirmary"),
+            ).fetchone()
+        )
+        current_status = connessione.execute(
+            "SELECT current_status FROM entity_state WHERE world_id = ? AND entity_id = ?",
+            (self.mondo.id, "infirmary"),
+        ).fetchone()[0]
+        colonne_canoniche = {
+            riga["name"]
+            for riga in connessione.execute("PRAGMA table_info(world_entities)")
+        }
+
+        self.assertEqual(riga_canonica_prima, riga_canonica_dopo)
+        self.assertNotIn("status", colonne_canoniche)
+        self.assertEqual(entita_prima.canonical_data, entita_dopo.canonical_data)
+        self.assertEqual("active", entita_dopo.canonical_data["status"])
+        self.assertEqual("inaccessible", current_status)
+        self.assertEqual("inaccessible", entita_dopo.status)
+
+    def test_current_status_persiste_dopo_riavvio(self) -> None:
+        self.stato.cambia_stato(
+            self.mondo.id,
+            "infirmary",
+            status="inaccessible",
+            reason="L'infermeria viene chiusa temporaneamente.",
+        )
+        assert self.servizio is not None
+        self.servizio.chiudi()
+        self.servizio = ServizioMondi(self.database)
+
+        entita = self.stato.carica_entita(self.mondo.id, "infirmary")
+        current_status = self.servizio.archivio._connessione.execute(
+            "SELECT current_status FROM entity_state WHERE world_id = ? AND entity_id = ?",
+            (self.mondo.id, "infirmary"),
+        ).fetchone()[0]
+
+        self.assertEqual("inaccessible", entita.status)
+        self.assertEqual("inaccessible", current_status)
+
     def test_sposta_akari_crea_un_solo_evento(self) -> None:
         evento = self.stato.sposta_entita(
             self.mondo.id,
@@ -346,6 +408,109 @@ class TestStatoCorrenteEventi(unittest.TestCase):
         self.assertEqual("infirmary", penna.location_id)
         self.assertEqual("trasferimento_oggetto", evento.event_type)
         self.assertEqual("luca", evento.actor_id)
+
+    def test_oggetto_posseduto_segue_personaggio_con_un_solo_evento(self) -> None:
+        self.stato.trasferisci_oggetto(
+            self.mondo.id,
+            "pen_blue",
+            "luca",
+            reason="Luca prende la penna blu.",
+        )
+        spostamento = self.stato.sposta_entita(
+            self.mondo.id,
+            "luca",
+            "assembly",
+            actor_id="elise_moreau",
+            reason="Élise accompagna Luca all'assemblea.",
+        )
+
+        luca = self.stato.carica_entita(self.mondo.id, "luca")
+        penna = self.stato.carica_entita(self.mondo.id, "pen_blue")
+        eventi_luca = [
+            evento
+            for evento in self.stato.eventi_per_entita(self.mondo.id, "luca")
+            if evento.event_type == "spostamento_entita"
+        ]
+        eventi_penna = [
+            evento
+            for evento in self.stato.eventi_per_entita(self.mondo.id, "pen_blue")
+            if evento.event_type == "spostamento_entita"
+        ]
+        eventi_spostamento = [
+            evento
+            for evento in self.stato.elenca_eventi(self.mondo.id)
+            if evento.event_type == "spostamento_entita"
+        ]
+
+        self.assertEqual("assembly", luca.location_id)
+        self.assertEqual("assembly", penna.location_id)
+        self.assertEqual("luca", penna.holder_id)
+        self.assertEqual([spostamento.event_id], [evento.event_id for evento in eventi_luca])
+        self.assertEqual([spostamento.event_id], [evento.event_id for evento in eventi_penna])
+        self.assertEqual([spostamento.event_id], [evento.event_id for evento in eventi_spostamento])
+
+    def test_spostamento_registra_tutte_le_associazioni_evento(self) -> None:
+        self.stato.trasferisci_oggetto(
+            self.mondo.id,
+            "pen_blue",
+            "luca",
+            reason="Luca prende la penna blu.",
+        )
+        evento = self.stato.sposta_entita(
+            self.mondo.id,
+            "luca",
+            "assembly",
+            actor_id="elise_moreau",
+            reason="Élise accompagna Luca all'assemblea.",
+        )
+        assert self.servizio is not None
+
+        associazioni = {
+            (riga["entity_id"], riga["role"])
+            for riga in self.servizio.archivio._connessione.execute(
+                "SELECT entity_id, role FROM event_entities WHERE event_id = ?",
+                (evento.event_id,),
+            )
+        }
+
+        self.assertEqual(
+            {
+                ("elise_moreau", "actor"),
+                ("luca", "target"),
+                ("assembly", "location"),
+                ("luca", "affected"),
+                ("pen_blue", "affected"),
+            },
+            associazioni,
+        )
+
+    def test_evento_descrittivo_registra_actor_target_e_location(self) -> None:
+        evento = self.stato.registra_evento_descrittivo(
+            self.mondo.id,
+            "osservazione",
+            actor_id="elise_moreau",
+            target_id="akari_mori",
+            location_id="assembly",
+            reason="Élise osserva Akari nell'assemblea.",
+        )
+        assert self.servizio is not None
+
+        associazioni = {
+            (riga["entity_id"], riga["role"])
+            for riga in self.servizio.archivio._connessione.execute(
+                "SELECT entity_id, role FROM event_entities WHERE event_id = ?",
+                (evento.event_id,),
+            )
+        }
+
+        self.assertEqual(
+            {
+                ("elise_moreau", "actor"),
+                ("akari_mori", "target"),
+                ("assembly", "location"),
+            },
+            associazioni,
+        )
 
     def test_sequenza_persiste_e_non_modifica_le_chiavi(self) -> None:
         chiavi_prima = self.stato.carica_entita(self.mondo.id, "infirmary_keys")
@@ -450,6 +615,41 @@ class TestStatoCorrenteEventi(unittest.TestCase):
             )
         self.servizio.archivio._connessione.rollback()
 
+    def test_trigger_impedisce_update_associazioni_eventi(self) -> None:
+        evento = self.stato.registra_evento_descrittivo(
+            self.mondo.id,
+            "nota",
+            target_id="luca",
+            reason="Evento descrittivo di collaudo.",
+        )
+        assert self.servizio is not None
+
+        with self.assertRaisesRegex(sqlite3.IntegrityError, "immutabili"):
+            self.servizio.archivio._connessione.execute(
+                """
+                UPDATE event_entities SET role = 'affected'
+                WHERE event_id = ? AND entity_id = ? AND role = 'target'
+                """,
+                (evento.event_id, "luca"),
+            )
+        self.servizio.archivio._connessione.rollback()
+
+    def test_trigger_impedisce_delete_associazioni_eventi(self) -> None:
+        evento = self.stato.registra_evento_descrittivo(
+            self.mondo.id,
+            "nota",
+            target_id="luca",
+            reason="Evento descrittivo di collaudo.",
+        )
+        assert self.servizio is not None
+
+        with self.assertRaisesRegex(sqlite3.IntegrityError, "immutabili"):
+            self.servizio.archivio._connessione.execute(
+                "DELETE FROM event_entities WHERE event_id = ?",
+                (evento.event_id,),
+            )
+        self.servizio.archivio._connessione.rollback()
+
     def test_rollback_evento_e_stato_se_aggiornamento_fallisce(self) -> None:
         assert self.servizio is not None
         connessione = self.servizio.archivio._connessione
@@ -477,6 +677,44 @@ class TestStatoCorrenteEventi(unittest.TestCase):
         penna_dopo = self.stato.carica_entita(self.mondo.id, "pen_blue")
         self.assertEqual(penna_prima, penna_dopo)
         self.assertEqual([], self.stato.elenca_eventi(self.mondo.id))
+        self.assertEqual(
+            0,
+            connessione.execute("SELECT COUNT(*) FROM event_entities").fetchone()[0],
+        )
+
+    def test_rollback_totale_se_associazione_evento_fallisce(self) -> None:
+        assert self.servizio is not None
+        connessione = self.servizio.archivio._connessione
+        connessione.execute(
+            """
+            CREATE TRIGGER collaudo_blocca_associazione
+            BEFORE INSERT ON event_entities
+            WHEN NEW.entity_id = 'pen_blue' AND NEW.role = 'affected'
+            BEGIN
+                SELECT RAISE(ABORT, 'Errore simulato sull''associazione');
+            END
+            """
+        )
+        connessione.commit()
+        penna_prima = self.stato.carica_entita(self.mondo.id, "pen_blue")
+
+        with self.assertRaisesRegex(ErroreStatoMondo, "evento e stato.*invariati"):
+            self.stato.trasferisci_oggetto(
+                self.mondo.id,
+                "pen_blue",
+                "luca",
+                reason="Luca prende la penna blu.",
+            )
+
+        self.assertEqual(
+            penna_prima,
+            self.stato.carica_entita(self.mondo.id, "pen_blue"),
+        )
+        self.assertEqual([], self.stato.elenca_eventi(self.mondo.id))
+        self.assertEqual(
+            0,
+            connessione.execute("SELECT COUNT(*) FROM event_entities").fetchone()[0],
+        )
 
     def test_possessore_inesistente_restituisce_errore_italiano(self) -> None:
         with self.assertRaisesRegex(ErroreStatoMondo, "non esiste"):
