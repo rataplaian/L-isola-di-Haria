@@ -164,6 +164,13 @@ class ServizioStatoMondo:
                 "Il possessore non ha una posizione corrente valida."
             )
         self._richiedi_tipo(mondo_id, possessore.location_id, TIPO_LUOGO)
+        if (
+            oggetto.holder_id == possessore.entity_id
+            and oggetto.location_id == possessore.location_id
+        ):
+            raise ErroreStatoMondo(
+                "L'oggetto è già assegnato al possessore selezionato."
+            )
         attore = actor_id or possessore.entity_id
         self._valida_riferimento_opzionale(mondo_id, attore)
 
