@@ -8,6 +8,7 @@ from tkinter import filedialog, messagebox, ttk
 
 from .editor_state import SceltaModifiche, StatoEditor
 from .errors import ErroreHaria
+from .memories import MemoriaPersonaggio
 from .models import Mondo
 from .paths import database_predefinito
 from .service import ServizioMondi
@@ -67,6 +68,20 @@ UI_TEXT = {
     "trasferisci_oggetto": "Trasferisci oggetto",
     "seleziona_trasferimento": "Seleziona un oggetto e un nuovo possessore.",
     "trasferimento_completato": "Oggetto trasferito e stato aggiornato correttamente.",
+    "memorie_personaggi": "Memorie dei personaggi",
+    "personaggio_memorie": "Personaggio",
+    "filtra_entita": "Entità collegata",
+    "tutte_entita": "Tutte le entità",
+    "cronologia_completa_memorie": "Cronologia completa",
+    "contenuto_memoria": "Contenuto",
+    "tipo_conoscenza": "Tipo di conoscenza",
+    "fonte_memoria": "Fonte",
+    "certezza_memoria": "Certezza",
+    "data_memoria": "Data appresa",
+    "interpretazione_memoria": "Interpretazione",
+    "emozione_memoria": "Emozione",
+    "stato_memoria": "Stato",
+    "nessuna_memoria": "Nessuna memoria disponibile per i filtri selezionati.",
 }
 
 
@@ -90,6 +105,16 @@ def etichetta_impostazione(chiave: str) -> str:
     )
 
 
+def etichetta_stato_memoria(effective_status: str) -> str:
+    etichette = {
+        "active": "Attiva",
+        "corrected": "Corretta",
+        "contradicted": "Contraddetta",
+        "superseded": "Superata",
+    }
+    return etichette.get(effective_status, "Stato non riconosciuto")
+
+
 class ApplicazioneHaria:
     def __init__(self, radice: tk.Tk, percorso_database: str | Path) -> None:
         self.radice = radice
@@ -100,6 +125,9 @@ class ApplicazioneHaria:
         self._caricamento_interfaccia = False
         self._oggetti_trasferibili: list[EntitaMondo] = []
         self._possessori_disponibili: list[EntitaMondo] = []
+        self._personaggi_memorie: list[EntitaMondo] = []
+        self._entita_memorie: list[EntitaMondo] = []
+        self._cronologia_completa_memorie = tk.BooleanVar(value=False)
 
         self.radice.title(UI_TEXT["titolo_finestra"])
         self.radice.geometry("1080x720")
@@ -173,6 +201,7 @@ class ApplicazioneHaria:
         self.scheda_impostazioni.columnconfigure(1, weight=1)
 
         self._costruisci_scheda_stato_mondo()
+        self._costruisci_scheda_memorie()
 
         scheda_cronologia = ttk.Frame(self.schede, padding=10)
         self.schede.add(scheda_cronologia, text=UI_TEXT["cronologia"])
@@ -212,6 +241,96 @@ class ApplicazioneHaria:
             contenitore, text=UI_TEXT["istruzione_importa"], anchor=tk.W
         )
         self.etichetta_stato.pack(fill=tk.X, pady=(10, 0))
+
+    def _costruisci_scheda_memorie(self) -> None:
+        scheda = ttk.Frame(self.schede, padding=10)
+        self.schede.add(scheda, text=UI_TEXT["memorie_personaggi"])
+        scheda.rowconfigure(1, weight=1)
+        scheda.columnconfigure(0, weight=1)
+
+        filtri = ttk.Frame(scheda)
+        filtri.grid(row=0, column=0, sticky="ew", pady=(0, 8))
+        filtri.columnconfigure(1, weight=1)
+        filtri.columnconfigure(3, weight=1)
+        ttk.Label(filtri, text=UI_TEXT["personaggio_memorie"]).grid(
+            row=0, column=0, sticky="w", padx=(0, 8)
+        )
+        self.selettore_personaggio_memorie = ttk.Combobox(
+            filtri, state="readonly", width=28
+        )
+        self.selettore_personaggio_memorie.grid(
+            row=0, column=1, sticky="ew", padx=(0, 16)
+        )
+        self.selettore_personaggio_memorie.bind(
+            "<<ComboboxSelected>>", self._mostra_memorie_selezionate
+        )
+        ttk.Label(filtri, text=UI_TEXT["filtra_entita"]).grid(
+            row=0, column=2, sticky="w", padx=(0, 8)
+        )
+        self.selettore_entita_memorie = ttk.Combobox(
+            filtri, state="readonly", width=28
+        )
+        self.selettore_entita_memorie.grid(
+            row=0, column=3, sticky="ew", padx=(0, 16)
+        )
+        self.selettore_entita_memorie.bind(
+            "<<ComboboxSelected>>", self._mostra_memorie_selezionate
+        )
+        ttk.Checkbutton(
+            filtri,
+            text=UI_TEXT["cronologia_completa_memorie"],
+            variable=self._cronologia_completa_memorie,
+            command=self._mostra_memorie_selezionate,
+        ).grid(row=0, column=4, sticky="e")
+
+        colonne = (
+            "contenuto",
+            "tipo",
+            "fonte",
+            "certezza",
+            "data",
+            "interpretazione",
+            "emozione",
+            "stato",
+        )
+        self.albero_memorie = ttk.Treeview(
+            scheda, columns=colonne, show="headings", selectmode="browse"
+        )
+        intestazioni = {
+            "contenuto": UI_TEXT["contenuto_memoria"],
+            "tipo": UI_TEXT["tipo_conoscenza"],
+            "fonte": UI_TEXT["fonte_memoria"],
+            "certezza": UI_TEXT["certezza_memoria"],
+            "data": UI_TEXT["data_memoria"],
+            "interpretazione": UI_TEXT["interpretazione_memoria"],
+            "emozione": UI_TEXT["emozione_memoria"],
+            "stato": UI_TEXT["stato_memoria"],
+        }
+        for colonna, testo in intestazioni.items():
+            self.albero_memorie.heading(colonna, text=testo)
+        self.albero_memorie.column("contenuto", width=310)
+        self.albero_memorie.column("tipo", width=150)
+        self.albero_memorie.column("fonte", width=150)
+        self.albero_memorie.column("certezza", width=80, anchor=tk.CENTER)
+        self.albero_memorie.column("data", width=190)
+        self.albero_memorie.column("interpretazione", width=190)
+        self.albero_memorie.column("emozione", width=130)
+        self.albero_memorie.column("stato", width=90, anchor=tk.CENTER)
+        self.albero_memorie.tag_configure("osservata", background="#eaf5ff")
+        self.albero_memorie.tag_configure("riferita", background="#fff3df")
+        self.albero_memorie.grid(row=1, column=0, sticky="nsew")
+        scorrimento = ttk.Scrollbar(
+            scheda, orient=tk.VERTICAL, command=self.albero_memorie.yview
+        )
+        scorrimento.grid(row=1, column=1, sticky="ns")
+        scorrimento_orizzontale = ttk.Scrollbar(
+            scheda, orient=tk.HORIZONTAL, command=self.albero_memorie.xview
+        )
+        scorrimento_orizzontale.grid(row=2, column=0, sticky="ew")
+        self.albero_memorie.configure(
+            yscrollcommand=scorrimento.set,
+            xscrollcommand=scorrimento_orizzontale.set,
+        )
 
     def _costruisci_scheda_stato_mondo(self) -> None:
         scheda = ttk.Frame(self.schede, padding=10)
@@ -325,6 +444,7 @@ class ApplicazioneHaria:
             self._caricamento_interfaccia = False
         self._aggiorna_cronologia()
         self._aggiorna_stato_mondo()
+        self._aggiorna_memorie()
         self.pulsante_salva.configure(state=tk.NORMAL)
         self.pulsante_esporta.configure(state=tk.NORMAL)
         self.pulsante_ripristina.configure(state=tk.NORMAL)
@@ -435,6 +555,107 @@ class ApplicazioneHaria:
             self.selettore_possessore.current(0)
         if self._oggetti_trasferibili and self._possessori_disponibili:
             self.pulsante_trasferisci.configure(state=tk.NORMAL)
+
+    def _aggiorna_memorie(self) -> None:
+        self._personaggi_memorie = []
+        self._entita_memorie = []
+        self.selettore_personaggio_memorie["values"] = ()
+        self.selettore_entita_memorie["values"] = (UI_TEXT["tutte_entita"],)
+        self.selettore_entita_memorie.current(0)
+        self._svuota_memorie()
+        if self.mondo_corrente is None:
+            return
+
+        entita = self.servizio.stato_mondo.elenca_entita(self.mondo_corrente.id)
+        self._personaggi_memorie = [
+            voce for voce in entita if voce.entity_type == TIPO_PERSONAGGIO
+        ]
+        self._entita_memorie = entita
+        self.selettore_personaggio_memorie["values"] = tuple(
+            voce.canonical_name for voce in self._personaggi_memorie
+        )
+        self.selettore_entita_memorie["values"] = (
+            UI_TEXT["tutte_entita"],
+            *(voce.canonical_name for voce in self._entita_memorie),
+        )
+        if self._personaggi_memorie:
+            self.selettore_personaggio_memorie.current(0)
+            self._mostra_memorie_selezionate()
+
+    def _svuota_memorie(self) -> None:
+        for elemento in self.albero_memorie.get_children():
+            self.albero_memorie.delete(elemento)
+
+    def _mostra_memorie_selezionate(
+        self, _evento: object | None = None
+    ) -> None:
+        self._svuota_memorie()
+        if self.mondo_corrente is None:
+            return
+        indice_personaggio = self.selettore_personaggio_memorie.current()
+        if indice_personaggio < 0:
+            return
+        personaggio = self._personaggi_memorie[indice_personaggio]
+        indice_entita = self.selettore_entita_memorie.current()
+        entity_id = None
+        if indice_entita > 0:
+            entity_id = self._entita_memorie[indice_entita - 1].entity_id
+        memorie = self.servizio.memorie.elenca_memorie_personaggio(
+            self.mondo_corrente.id,
+            personaggio.entity_id,
+            entity_id=entity_id,
+            solo_correnti=not self._cronologia_completa_memorie.get(),
+        )
+        if not memorie:
+            self.albero_memorie.insert(
+                "", tk.END, values=(UI_TEXT["nessuna_memoria"], "", "", "", "", "", "", "")
+            )
+            return
+        for memoria in memorie:
+            etichetta = ""
+            if memoria.source_type == "direct_observation":
+                etichetta = "osservata"
+            elif memoria.source_type == "told_by_character":
+                etichetta = "riferita"
+            self.albero_memorie.insert(
+                "",
+                tk.END,
+                values=(
+                    memoria.content,
+                    self._tipo_conoscenza_memoria(memoria.knowledge_type),
+                    self._fonte_memoria(memoria),
+                    f"{memoria.certainty}%",
+                    memoria.learned_at,
+                    memoria.interpretation or "—",
+                    memoria.associated_emotion or "—",
+                    etichetta_stato_memoria(memoria.effective_status),
+                ),
+                tags=(etichetta,) if etichetta else (),
+            )
+
+    @staticmethod
+    def _tipo_conoscenza_memoria(knowledge_type: str) -> str:
+        etichette = {
+            "observed_fact": "Fatto osservato",
+            "reported_fact": "Fatto riferito",
+            "inference": "Inferenza",
+            "belief": "Convinzione",
+            "canonical_knowledge": "Conoscenza iniziale",
+        }
+        return etichette.get(knowledge_type, "Conoscenza")
+
+    @staticmethod
+    def _fonte_memoria(memoria: MemoriaPersonaggio) -> str:
+        if memoria.source_name:
+            return memoria.source_name
+        etichette = {
+            "direct_observation": "Osservazione diretta",
+            "told_by_character": "Racconto",
+            "inference": "Inferenza personale",
+            "imported_background": "Conoscenza iniziale",
+            "self_experience": "Esperienza personale",
+        }
+        return etichette.get(memoria.source_type, "Fonte non specificata")
 
     def _mostra_eventi_entita_selezionata(
         self, _evento: object | None = None

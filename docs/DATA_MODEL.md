@@ -37,10 +37,10 @@ Ogni entità conserva uno stato attuale separato dal profilo canonico.
 ## Eventi
 Gli eventi sono immutabili e descrivono la causa dei cambiamenti.
 
-## Schema SQLite implementato nel Task 002
+## Schema SQLite implementato fino al Task 003
 
-Lo schema applicativo corrente è la versione 2. Le tabelle del Task 001
-`worlds`, `world_versions` e `source_files` restano invariate.
+Lo schema applicativo corrente è la versione 3. Le tabelle dei Task 001 e 002
+restano disponibili senza modifiche distruttive.
 
 ### `world_entities`
 
@@ -86,16 +86,55 @@ invariati.
 
 La riapertura di uno schema 2 non ripete la migrazione e non duplica entità.
 
-## Memorie
-Ogni memoria deve indicare:
-- personaggio;
-- evento collegato;
-- tipo di conoscenza;
-- certezza;
-- fonte;
-- data appresa;
-- eventuale interpretazione;
-- eventuale emozione associata.
+### `memories`
+
+Conserva conoscenze e convinzioni di un singolo personaggio. Ogni riga include
+tipo di conoscenza, tipo e possibile entità fonte, certezza, contenuto, data,
+interpretazione ed emozione opzionali, possibile evento e possibile memoria
+precedente.
+
+Il campo `status` è immutabile: `active` indica una memoria ordinaria,
+`corrected` o `contradicted` descrivono la nuova memoria che sostituisce quella
+indicata da `supersedes_memory_id`; `superseded` è supportato dal modello ma il
+servizio normale non lo scrive sulla vecchia riga. Una memoria è corrente se
+non possiede un successore. `effective_status` vale `superseded` quando un
+successore esiste, altrimenti coincide con `status`.
+
+Un indice unico parziale su `supersedes_memory_id` consente un solo successore
+diretto. Il riferimento può puntare soltanto a una memoria già esistente dello
+stesso mondo e personaggio; poiché le righe non sono aggiornabili o eliminabili,
+non sono costruibili né ramificazioni né cicli più lunghi.
+
+### `memory_entities`
+
+Collega una memoria alle entità dello stesso mondo con ruolo `subject`,
+`source`, `location` o `related`. Permette filtri strutturati senza dedurre
+informazioni dal testo libero.
+
+### `memory_sources`
+
+Registra in ordine positivo le memorie da cui nasce un'inferenza. Memoria
+risultante e sorgente devono appartenere allo stesso mondo e personaggio, non
+possono coincidere e ogni posizione è unica nella memoria risultante. Una
+memoria sorgente può essere corrente o storica.
+
+Le tre tabelle sono append-only: non esistono API applicative di modifica o
+cancellazione e trigger SQLite rifiutano `UPDATE` e `DELETE`. Memoria,
+`memory_entities` e `memory_sources` vengono inserite nella stessa transazione.
+
+## Migrazione 2 → 3
+
+La migrazione ricostruisce una memoria per ogni voce `knowledge` usando soltanto
+le fotografie `characters.json` conservate in `source_files`. Gli ID importati
+sono deterministici e includono mondo, personaggio, posizione e impronta del
+contenuto. Un archivio mancante o non valido provoca rollback completo:
+`PRAGMA user_version` resta 2 e nessuna tabella Task 003 rimane parziale.
+
+## Limite temporale delle osservazioni
+
+Nel Task 003 l'osservazione diretta viene registrata immediatamente rispetto
+all'evento e verifica la posizione corrente del personaggio. Non sono supportate
+osservazioni retroattive: richiederanno snapshot temporali in un task futuro.
 
 ## Luoghi
 Possibili stati:

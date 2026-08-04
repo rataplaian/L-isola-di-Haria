@@ -11,6 +11,7 @@ from collections.abc import Mapping
 from pathlib import Path, PurePosixPath
 
 from .errors import ErroreEsportazione, ErroreImportazione
+from .memories import ServizioMemorie
 from .models import FileSorgente, Mondo, RisultatoEsportazione, VersioneMondo
 from .storage import ArchivioSQLite
 from .world_state import ServizioStatoMondo, importa_entita_da_file
@@ -31,6 +32,7 @@ class ServizioMondi:
     def __init__(self, percorso_database: str | Path) -> None:
         self.archivio = ArchivioSQLite(percorso_database)
         self.stato_mondo = ServizioStatoMondo(self.archivio)
+        self.memorie = ServizioMemorie(self.archivio)
 
     def importa_da_cartella(self, cartella_sorgente: str | Path) -> Mondo:
         sorgente = Path(cartella_sorgente).expanduser().resolve()

@@ -41,6 +41,23 @@ fotografie già conservate in `source_files`; la cartella originale non viene
 riletta. Se le fotografie richieste sono incomplete o non valide, la migrazione
 viene annullata e il database resta allo schema 1.
 
+## Task 003 — Memorie soggettive
+
+Lo schema SQLite 3 separa le memorie di ciascun personaggio dal canone, dallo
+stato operativo e dagli eventi. Un fatto globale non diventa conoscenza
+automatica: osservazioni, racconti, inferenze e correzioni vengono registrati
+esplicitamente tramite il servizio applicativo.
+
+Le memorie e le relazioni con entità e memorie sorgente sono append-only. Le
+correzioni creano catene lineari senza riscrivere la memoria precedente; la
+vista corrente viene calcolata dalle relazioni di sostituzione. Le conoscenze
+iniziali di `characters.json` vengono importate con identità deterministiche.
+
+La scheda **Memorie dei personaggi** permette di selezionare un personaggio,
+filtrare per entità, passare dalla vista corrente alla cronologia completa e
+consultare contenuto, tipo, fonte, certezza, data, interpretazione ed emozione,
+senza mostrare identificatori tecnici.
+
 ## Requisiti
 
 - Python 3.11 o successivo;
@@ -90,6 +107,8 @@ py -3 -m haria_engine --database C:\percorso\haria.sqlite3
 5. Selezionare **Esporta mondo** e scegliere una cartella di destinazione.
 6. Aprire **Stato del mondo** per consultare entità ed eventi o trasferire un
    oggetto tramite i controlli italiani.
+7. Aprire **Memorie dei personaggi** per consultare conoscenze correnti e
+   cronologia soggettiva in sola lettura.
 
 ## Test e verifica di avvio
 
@@ -107,10 +126,18 @@ python3 -m unittest discover -s tests -v
 python3 -m haria_engine --check
 ```
 
-La suite corrente contiene **55 test automatici** per Task 001 e Task 002.
+La suite corrente contiene **90 test automatici** per Task 001, Task 002 e
+Task 003.
 
 ## Dati e sicurezza dei sorgenti
 
-La mini-Bibbia selezionata viene soltanto letta. I suoi file non vengono modificati o cancellati. Il canone importato, lo stato corrente, il registro eventi, le fotografie dei sorgenti e la cronologia sono conservati separatamente nel database SQLite; l'esportazione viene sempre creata in una nuova cartella.
+La mini-Bibbia selezionata viene soltanto letta. I suoi file non vengono
+modificati o cancellati. Il canone importato, lo stato corrente, il registro
+eventi, le memorie soggettive, le fotografie dei sorgenti e la cronologia sono
+conservati separatamente nel database SQLite; l'esportazione viene sempre
+creata in una nuova cartella.
 
-Le motivazioni dello stack e i confini architetturali sono descritti in `docs/TECHNICAL_DECISIONS.md`. Gli stati puntuali degli incarichi sono in `docs/TASK_001_STATUS.md` e `docs/TASK_002_STATUS.md`.
+Le motivazioni dello stack e i confini architetturali sono descritti in
+`docs/TECHNICAL_DECISIONS.md`. Gli stati puntuali degli incarichi sono in
+`docs/TASK_001_STATUS.md`, `docs/TASK_002_STATUS.md` e
+`docs/TASK_003_STATUS.md`.
