@@ -5,6 +5,8 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import shutil
+import tempfile
 from collections.abc import Mapping
 from pathlib import Path, PurePosixPath
 
@@ -182,38 +184,63 @@ class ServizioMondi:
             )
             progressivo += 1
 
+        cartella_temporanea: Path | None = None
         try:
-            cartella.mkdir()
-            for file in self.archivio.file_sorgente(mondo_id):
-                relativo = PurePosixPath(file.percorso_relativo)
-                if relativo.is_absolute() or ".." in relativo.parts:
-                    raise ErroreEsportazione(
-                        "Il pacchetto importato contiene un percorso non sicuro."
-                    )
-                destinazione = cartella.joinpath(*relativo.parts)
-                destinazione.parent.mkdir(parents=True, exist_ok=True)
-                destinazione.write_bytes(file.contenuto)
-
-            (cartella / "scenario.md").write_text(mondo.scenario, encoding="utf-8")
-            percorso_world = cartella / "world.json"
-            dati_world = json.loads(percorso_world.read_text(encoding="utf-8"))
-            dati_world["scenario"] = self._scenario_senza_intestazione(mondo.scenario)
-            dati_world["narrative_style"] = mondo.impostazioni_narrative
-            dati_world["version"] = mondo.versione_corrente
-            percorso_world.write_text(
-                json.dumps(dati_world, ensure_ascii=False, indent=2) + "\n",
-                encoding="utf-8",
+            cartella_temporanea = Path(
+                tempfile.mkdtemp(prefix=".haria_export_", dir=base)
             )
+            self._scrivi_esportazione(mondo, cartella_temporanea)
+            cartella_temporanea.rename(cartella)
+            cartella_temporanea = None
         except ErroreEsportazione:
+            self._rimuovi_cartella_temporanea(cartella_temporanea)
             raise
         except (OSError, ValueError, json.JSONDecodeError) as errore:
+            self._rimuovi_cartella_temporanea(cartella_temporanea)
             raise ErroreEsportazione(
-                "L'esportazione non è riuscita. Nessun file sorgente è stato modificato."
+                "L'esportazione non è riuscita. Nessuna cartella parziale è stata "
+                "conservata e nessun file sorgente è stato modificato."
             ) from errore
 
         return RisultatoEsportazione(
             cartella=cartella, versione=mondo.versione_corrente
         )
+
+    def _scrivi_esportazione(self, mondo: Mondo, cartella: Path) -> None:
+        """Prepara l'intero pacchetto in una cartella non ancora pubblicata."""
+
+        for file in self.archivio.file_sorgente(mondo.id):
+            relativo = PurePosixPath(file.percorso_relativo)
+            if relativo.is_absolute() or ".." in relativo.parts:
+                raise ErroreEsportazione(
+                    "Il pacchetto importato contiene un percorso non sicuro."
+                )
+            destinazione = cartella.joinpath(*relativo.parts)
+            destinazione.parent.mkdir(parents=True, exist_ok=True)
+            destinazione.write_bytes(file.contenuto)
+
+        (cartella / "scenario.md").write_text(mondo.scenario, encoding="utf-8")
+        percorso_world = cartella / "world.json"
+        dati_world = json.loads(percorso_world.read_text(encoding="utf-8"))
+        dati_world["scenario"] = self._scenario_senza_intestazione(mondo.scenario)
+        dati_world["narrative_style"] = mondo.impostazioni_narrative
+        dati_world["version"] = mondo.versione_corrente
+        percorso_world.write_text(
+            json.dumps(dati_world, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+
+    @staticmethod
+    def _rimuovi_cartella_temporanea(cartella: Path | None) -> None:
+        if cartella is None or not cartella.exists():
+            return
+        try:
+            shutil.rmtree(cartella)
+        except OSError as errore:
+            raise ErroreEsportazione(
+                "L'esportazione è fallita e non è stato possibile rimuovere la "
+                "cartella temporanea incompleta."
+            ) from errore
 
     @staticmethod
     def _scenario_senza_intestazione(scenario: str) -> str:

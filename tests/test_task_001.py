@@ -8,9 +8,10 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from haria_engine.app import ETICHETTE_IMPOSTAZIONI, UI_TEXT
-from haria_engine.errors import ErroreImportazione
+from haria_engine.errors import ErroreEsportazione, ErroreImportazione
 from haria_engine.service import ServizioMondi
 
 
@@ -45,6 +46,22 @@ class TestCodexTask001(unittest.TestCase):
     def importa(self):
         assert self.servizio is not None
         return self.servizio.importa_da_cartella(self.sorgente)
+
+    def esporta_con_errore_simulato(self, mondo_id: str, destinazione: Path) -> None:
+        assert self.servizio is not None
+
+        def scrittura_parziale(_mondo, cartella_temporanea: Path) -> None:
+            (cartella_temporanea / "file_parziale.txt").write_text(
+                "contenuto incompleto", encoding="utf-8"
+            )
+            raise OSError("Errore di scrittura simulato")
+
+        with mock.patch.object(
+            self.servizio,
+            "_scrivi_esportazione",
+            side_effect=scrittura_parziale,
+        ):
+            self.servizio.esporta(mondo_id, destinazione)
 
     def test_import_valido_mostra_titolo_scenario_e_impostazioni(self) -> None:
         mondo = self.importa()
@@ -162,6 +179,37 @@ class TestCodexTask001(unittest.TestCase):
         dopo = impronte_cartella(self.sorgente)
 
         self.assertEqual(prima, dopo)
+
+    def test_errore_durante_esportazione_restituisce_messaggio_italiano(self) -> None:
+        mondo = self.importa()
+
+        with self.assertRaisesRegex(
+            ErroreEsportazione, "Nessuna cartella parziale.*nessun file sorgente"
+        ):
+            self.esporta_con_errore_simulato(
+                mondo.id, self.radice / "esportazione_fallita"
+            )
+
+    def test_errore_esportazione_non_lascia_cartelle_parziali(self) -> None:
+        mondo = self.importa()
+        destinazione = self.radice / "esportazione_fallita"
+
+        with self.assertRaises(ErroreEsportazione):
+            self.esporta_con_errore_simulato(mondo.id, destinazione)
+
+        self.assertTrue(destinazione.is_dir())
+        self.assertEqual([], list(destinazione.iterdir()))
+
+    def test_errore_esportazione_mantiene_integri_i_file_sorgente(self) -> None:
+        prima = impronte_cartella(self.sorgente)
+        mondo = self.importa()
+
+        with self.assertRaises(ErroreEsportazione):
+            self.esporta_con_errore_simulato(
+                mondo.id, self.radice / "esportazione_fallita"
+            )
+
+        self.assertEqual(prima, impronte_cartella(self.sorgente))
 
     def test_interfaccia_dichiara_funzioni_e_impostazioni_in_italiano(self) -> None:
         testi_richiesti = {
