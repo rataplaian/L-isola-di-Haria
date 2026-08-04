@@ -1,0 +1,26 @@
+[
+  {
+    "id": "pen_blue",
+    "name": "Penna blu",
+    "location_id": "infirmary",
+    "position": "scrivania",
+    "owner_id": null,
+    "condition": "intatta"
+  },
+  {
+    "id": "notebook_small",
+    "name": "Quaderno piccolo",
+    "location_id": "infirmary",
+    "position": "scrivania",
+    "owner_id": null,
+    "condition": "intatto"
+  },
+  {
+    "id": "infirmary_keys",
+    "name": "Chiavi dell'infermeria",
+    "location_id": "infirmary",
+    "position": "gancio vicino alla porta",
+    "owner_id": null,
+    "condition": "intatte"
+  }
+]

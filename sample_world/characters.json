@@ -1,0 +1,35 @@
+[
+  {
+    "id": "luca",
+    "name": "Luca",
+    "role": "player",
+    "age_apparent": 31,
+    "height_cm": 169,
+    "location_id": "infirmary",
+    "knowledge": [
+      "Ricorda soltanto il proprio nome."
+    ],
+    "inventory": []
+  },
+  {
+    "id": "elise_moreau",
+    "name": "Élise Moreau",
+    "role": "npc",
+    "location_id": "infirmary",
+    "knowledge": [
+      "Ha trovato Luca sulla spiaggia.",
+      "Conosce lo stato dell'infermeria."
+    ],
+    "inventory": []
+  },
+  {
+    "id": "akari_mori",
+    "name": "Akari Mori",
+    "role": "npc",
+    "location_id": "assembly",
+    "knowledge": [
+      "Sa che una persona sconosciuta è stata trovata sulla spiaggia."
+    ],
+    "inventory": []
+  }
+]

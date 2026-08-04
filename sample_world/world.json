@@ -1,0 +1,21 @@
+{
+  "id": "haria_minimal_test",
+  "title": "Haria — Mini mondo di collaudo",
+  "language": "it",
+  "version": 1,
+  "player_character_id": "luca",
+  "scenario": "Luca si risveglia nell'infermeria di Haria dopo essere stato trovato incosciente sulla spiaggia orientale. Élise è presente. Akari si trova nell'edificio dell'assemblea. Sulla scrivania ci sono una penna e un quaderno. Le chiavi dell'infermeria sono appese a un gancio vicino alla porta.",
+  "rules": [
+    "L'utente controlla soltanto Luca.",
+    "Il motore controlla tutte le NPC e il mondo.",
+    "Il motore non decide pensieri, consenso, parole volontarie o azioni volontarie di Luca.",
+    "Le conoscenze non si trasferiscono automaticamente tra personaggi.",
+    "Oggetti, luoghi e persone mantengono stato persistente."
+  ],
+  "narrative_style": {
+    "point_of_view": "seconda persona",
+    "tense": "presente",
+    "tone": "realistico, immersivo, naturale",
+    "language": "italiano"
+  }
+}

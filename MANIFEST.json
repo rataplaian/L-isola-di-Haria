@@ -1,0 +1,92 @@
+{
+  "name": "Haria Engine Starter Package",
+  "created_at": "2026-08-04T11:24:15.654168+00:00",
+  "version": "0.1.0",
+  "contents": [
+    {
+      "path": "AGENTS.md",
+      "bytes": 1750,
+      "sha256": "7d43d408bc4ef5eca0498946fa229a61886ea8feba710f0587b1833875ba2731"
+    },
+    {
+      "path": "README.md",
+      "bytes": 811,
+      "sha256": "a0f327c19de155463c24a99f00e51d6f1d250c1c6e3df76ddedecd750ef2d4ee"
+    },
+    {
+      "path": "codex/CODEX_TASK_001.md",
+      "bytes": 1405,
+      "sha256": "9ee29c149fe56f1f00a4367dfd1480fd1287f5e1c57537ac52cecb55c98b4080"
+    },
+    {
+      "path": "docs/ARCHITECTURE.md",
+      "bytes": 1279,
+      "sha256": "c0a8c7c20e4582980cc4ee5933f7e64145b698abeaac6ac948392e2e422765c9"
+    },
+    {
+      "path": "docs/DATA_MODEL.md",
+      "bytes": 1145,
+      "sha256": "0bc34f91070e53e8273e37f865bfc3776444d236c3e26d56c41cdb85e42f0d16"
+    },
+    {
+      "path": "docs/EDITOR_REQUIREMENTS.md",
+      "bytes": 933,
+      "sha256": "f934be6924d9126b35b0b6087a0d2cf2f5672166fdf9151710c38c532339776e"
+    },
+    {
+      "path": "docs/MILESTONES.md",
+      "bytes": 797,
+      "sha256": "fc66502d1c64aae7b5abc6f0cea0c648816703d76ce607b4d1c5babd00823cb5"
+    },
+    {
+      "path": "docs/NARRATIVE_ENGINE.md",
+      "bytes": 990,
+      "sha256": "c4aa01a46a9bce2b3b07dd3fe72392c000c910882d120c9fc629b270193459d4"
+    },
+    {
+      "path": "docs/PRODUCT_SPEC.md",
+      "bytes": 1254,
+      "sha256": "ce9049b96a7b31db3a8c67447ba142d90dbb4491a7ca58c5a5400db91255ce66"
+    },
+    {
+      "path": "docs/TEST_PLAN.md",
+      "bytes": 1279,
+      "sha256": "8bf01a95ca7e3d19a67e28828991f6bd11b76eaf4c4938b18fd41fc08678dec8"
+    },
+    {
+      "path": "docs/WORLD_PACKAGE_SPEC.md",
+      "bytes": 655,
+      "sha256": "24317981441465e046da3b2a12421bbf61b978f2e94fc8c253dbf2a1eadd6570"
+    },
+    {
+      "path": "sample_world/characters.json",
+      "bytes": 708,
+      "sha256": "03b1166b8bb0705631a082a25efcecd434ad7b4ccb9774009de62526a58e4166"
+    },
+    {
+      "path": "sample_world/items.json",
+      "bytes": 547,
+      "sha256": "0ca3def86cab9bbd7b1b869e37dfc0c6e5c0aa65a741803c0c7c8f5389e52b09"
+    },
+    {
+      "path": "sample_world/locations.json",
+      "bytes": 328,
+      "sha256": "b183a336b8a330b02f5df8f4a669fa35ca608e60411574e0284eb0649c6cc3f0"
+    },
+    {
+      "path": "sample_world/rules.md",
+      "bytes": 310,
+      "sha256": "de15abac7792dac2d31a4fbaa6c9b245851cc0054218ad73268ebb4ed04d4503"
+    },
+    {
+      "path": "sample_world/scenario.md",
+      "bytes": 302,
+      "sha256": "b38007f8e89ebc306ecd66972381bac8ac4fa334b6ee9c21dd0e66879ebb96ef"
+    },
+    {
+      "path": "sample_world/world.json",
+      "bytes": 964,
+      "sha256": "49378ce98e746fee77bfadf7ed079490833191d0627bf500d68fe5794449ce44"
+    }
+  ]
+}

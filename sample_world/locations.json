@@ -1,0 +1,20 @@
+[
+  {
+    "id": "infirmary",
+    "name": "Infermeria",
+    "status": "active",
+    "accessible": true,
+    "items": [
+      "pen_blue",
+      "notebook_small",
+      "infirmary_keys"
+    ]
+  },
+  {
+    "id": "assembly",
+    "name": "Edificio dell'assemblea",
+    "status": "active",
+    "accessible": true,
+    "items": []
+  }
+]
