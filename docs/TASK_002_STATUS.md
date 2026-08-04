@@ -6,17 +6,22 @@
 - ricostruzione di canone e stato dai soli BLOB archiviati in `source_files`;
 - rollback completo con `user_version` invariato se gli archivi sono incompleti
   o non validi;
-- tabelle `world_entities`, `entity_state` ed `events`;
+- tabelle `world_entities`, `entity_state`, `events` ed `event_entities`;
 - personaggi, luoghi e oggetti importati con ID stabili;
-- separazione tra dati canonici e stato corrente;
+- separazione tra dati canonici immutabili e stato corrente, con
+  `entity_state.current_status` esplicito;
 - operazioni tipizzate `sposta_entita`, `trasferisci_oggetto`, `cambia_stato` e
   `registra_evento_descrittivo`;
 - validazioni di mondo, entità, tipo, posizione, possessore e coerenza del
   trasferimento;
-- transazione unica per inserimento evento e aggiornamenti di stato;
-- rollback con evento e stato invariati in caso di errore;
+- transazione unica per inserimento evento, associazioni alle entità e
+  aggiornamenti di stato;
+- rollback con evento, associazioni e stato invariati in caso di errore;
 - eventi append-only senza API di modifica o cancellazione;
-- trigger SQLite che rifiutano `UPDATE` e `DELETE` su `events`;
+- associazioni automatiche `actor`, `target`, `location` e `affected` che
+  rendono completa la cronologia di ogni entità senza duplicare eventi;
+- trigger SQLite che rifiutano `UPDATE` e `DELETE` su `events` ed
+  `event_entities`;
 - scheda italiana **Stato del mondo** con elenco entità, stato leggibile,
   cronologia e trasferimento manuale di oggetti;
 - messaggi di migrazione leggibili in italiano in GUI e modalità `--check`;
@@ -38,11 +43,13 @@ python -m unittest discover -s tests -v
 python -m haria_engine --check
 ```
 
-Esito suite: **47 test superati su 47**.
+Esito suite: **55 test superati su 55**.
 
 Sono verificati anche migrazione riuscita, archivi mancanti o non validi,
-riapertura idempotente, separazione canone/stato, trigger append-only, rollback
-evento+stato, validazioni italiane e assenza di dati tecnici nei testi GUI.
+riapertura idempotente, immutabilità del canone, persistenza di
+`current_status`, oggetti trasportati con il personaggio, identità condivisa
+degli eventi, trigger append-only, rollback evento+associazioni+stato,
+validazioni italiane e assenza di dati tecnici nei testi GUI.
 
 ## Escluso perché fuori ambito
 
@@ -62,8 +69,10 @@ evento+stato, validazioni italiane e assenza di dati tecnici nei testi GUI.
 - La GUI Tkinter resta volutamente essenziale e consente manualmente soltanto il
   trasferimento di oggetti; le altre operazioni sono disponibili nel servizio
   applicativo tipizzato.
-- Il runtime Python fornito nell'ambiente Codex di questa sessione non dispone
-  di un Tcl utilizzabile, quindi la nuova scheda non ha potuto essere avviata
-  visivamente qui. Test automatici, importazione della GUI e verifica dei testi
-  italiani sono completati; l'avvio visivo richiede un Python con Tkinter/Tcl
-  completo come indicato nel README.
+- La prova grafica è stata eseguita nell'ordine richiesto. `py -3 -m
+  haria_engine` non può partire perché il launcher `py` non è installato;
+  `python -m haria_engine` richiama soltanto l'alias Microsoft Store e segnala
+  che Python non è installato. Il runtime incorporato di Codex non dispone di
+  un Tcl utilizzabile. La finestra non ha quindi potuto essere collaudata
+  visivamente in questa sessione; l'avvio richiede un Python di sistema con
+  Tkinter/Tcl completo, senza cambiamenti allo stack.

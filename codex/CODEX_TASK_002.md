@@ -52,14 +52,18 @@ seguenti.
 - `entity_type`;
 - `canonical_name`;
 - `canonical_data`;
-- `status`;
 - `created_at`;
 - `updated_at`.
+
+La tabella conserva soltanto identità e canone importato e non viene aggiornata
+dalle operazioni runtime. L'eventuale `status` originale resta esclusivamente
+dentro `canonical_data`.
 
 ### `entity_state`
 
 - `world_id`;
 - `entity_id`;
+- `current_status`;
 - `location_id` opzionale;
 - `holder_id` opzionale;
 - `accessibility`;
@@ -81,7 +85,19 @@ seguenti.
 - `reason`;
 - `created_at`.
 
-Il registro `events` è append-only:
+### `event_entities`
+
+- `event_id`;
+- `world_id`;
+- `entity_id`;
+- `role`, con valori `actor`, `target`, `location` o `affected`;
+- chiave primaria `(event_id, entity_id, role)`;
+- chiave esterna verso `events`;
+- chiave esterna composta verso `world_entities`.
+
+Ogni evento associa automaticamente attore, bersaglio e luogo quando presenti,
+oltre a tutte le entità il cui stato viene aggiornato. Il registro `events` e le
+associazioni `event_entities` sono append-only:
 
 - nessuna API applicativa di modifica o cancellazione;
 - trigger SQLite che rifiutano `UPDATE` e `DELETE`;
@@ -141,7 +157,8 @@ possessore, creando un singolo evento immutabile.
 ### `cambia_stato`
 
 Modifica uno o più valori tra `status`, `condition` e `accessibility`, creando un
-evento immutabile.
+evento immutabile. `status` modifica soltanto `entity_state.current_status` e
+non il canone.
 
 ### `registra_evento_descrittivo`
 
@@ -156,8 +173,9 @@ Ogni operazione che modifica lo stato deve:
 3. validare il tipo delle entità;
 4. aprire una transazione SQLite;
 5. inserire l'evento;
-6. aggiornare lo stato;
-7. completare entrambe le scritture oppure annullarle entrambe.
+6. inserire tutte le associazioni in `event_entities`;
+7. aggiornare lo stato;
+8. completare tutte le scritture oppure annullarle tutte.
 
 Validazioni minime:
 
@@ -171,8 +189,8 @@ Validazioni minime:
 - non inventare entità mancanti;
 - errori leggibili in italiano.
 
-Un errore in qualsiasi passaggio deve lasciare invariati sia `events` sia
-`entity_state`.
+Un errore in qualsiasi passaggio deve lasciare invariati `events`,
+`event_entities` ed `entity_state`.
 
 ## Caso di collaudo obbligatorio
 
@@ -215,9 +233,13 @@ Non trasformare la GUI in un editor generico del database.
 - Canone, stato corrente, eventi e configurazione narrativa restano separati.
 - Importate tutte le entità minime con ID stabili.
 - Canone e file sorgente non vengono modificati dalle operazioni.
+- Lo stato corrente, incluso `current_status`, risiede soltanto in
+  `entity_state`.
 - Tutte le modifiche di stato derivano da eventi immutabili.
-- Evento e stato sono scritti nella stessa transazione.
-- Trigger SQLite impediscono aggiornamento e cancellazione degli eventi.
+- Evento, associazioni alle entità e stato sono scritti nella stessa
+  transazione.
+- Trigger SQLite impediscono aggiornamento e cancellazione di eventi e relative
+  associazioni.
 - Le quattro operazioni obbligatorie sono tipizzate e validate.
 - Il caso penna, chiavi e spostamento di Akari persiste dopo riavvio.
 - Interfaccia `Stato del mondo` completamente leggibile in italiano.
@@ -233,6 +255,9 @@ Aggiungere test automatici per:
 - riapertura di database già migrato;
 - importazione entità dal mini-mondo;
 - separazione canone/stato;
+- immutabilità di `canonical_data` e della riga `world_entities` dopo
+  `cambia_stato`;
+- aggiornamento e persistenza di `entity_state.current_status`;
 - posizione iniziale di Akari nell'assemblea;
 - spostamento valido di Akari nell'infermeria e singolo evento associato;
 - trasferimento valido della penna a Luca;
@@ -240,6 +265,11 @@ Aggiungere test automatici per:
 - chiavi rimaste in posizione, non possedute e senza eventi;
 - evento della penna creato una sola volta;
 - eventi append-only tramite tentativi di `UPDATE` e `DELETE`;
+- oggetti posseduti che seguono il personaggio con lo stesso evento, senza
+  duplicati;
+- associazioni `actor`, `target`, `location` e `affected`;
+- trigger append-only su `event_entities`;
+- rollback completo se l'inserimento di un'associazione fallisce;
 - rollback completo se l'aggiornamento dello stato fallisce;
 - possessore inesistente;
 - posizione inesistente;

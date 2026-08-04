@@ -27,8 +27,10 @@ L'interfaccia non mostra JSON o tabelle del database. Le impostazioni narrative 
 
 Lo schema SQLite 2 aggiunge personaggi, luoghi e oggetti con canone importato e
 stato corrente separati. Le operazioni strutturate di spostamento, trasferimento
-e cambio di stato registrano un evento immutabile nella stessa transazione dello
-stato aggiornato. Eventuali errori annullano entrambe le scritture.
+e cambio di stato registrano un evento immutabile, le entità coinvolte e lo
+stato aggiornato nella stessa transazione. Lo status corrente risiede soltanto
+nello stato operativo; il canone importato non viene aggiornato. Eventuali
+errori annullano tutte le scritture.
 
 La scheda **Stato del mondo** mostra nomi, tipi, posizioni, possessori, stato,
 condizione, accessibilità e cronologia degli eventi senza esporre dati tecnici.
@@ -105,7 +107,7 @@ python3 -m unittest discover -s tests -v
 python3 -m haria_engine --check
 ```
 
-La suite corrente contiene **47 test automatici** per Task 001 e Task 002.
+La suite corrente contiene **55 test automatici** per Task 001 e Task 002.
 
 ## Dati e sicurezza dei sorgenti
 
