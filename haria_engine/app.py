@@ -6,6 +6,7 @@ import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
+from .editor_state import SceltaModifiche, StatoEditor
 from .errors import ErroreHaria
 from .models import Mondo
 from .paths import database_predefinito
@@ -39,6 +40,14 @@ UI_TEXT = {
     "data_versione": "Data",
     "motivo_versione": "Operazione",
     "nessuna_impostazione": "Il pacchetto non contiene impostazioni narrative.",
+    "modifiche_non_salvate": "Modifiche non salvate",
+    "titolo_modificato": "* {titolo}",
+    "conferma_modifiche_non_salvate": (
+        "Sono presenti modifiche non salvate. Vuoi salvarle prima di {azione}?\n\n"
+        "Sì: salva le modifiche.\n"
+        "No: scarta le modifiche.\n"
+        "Annulla: interrompe l'operazione."
+    ),
 }
 
 
@@ -68,6 +77,8 @@ class ApplicazioneHaria:
         self.servizio = ServizioMondi(percorso_database)
         self.mondo_corrente: Mondo | None = None
         self.campi_impostazioni: dict[str, tk.StringVar] = {}
+        self.stato_editor = StatoEditor()
+        self._caricamento_interfaccia = False
 
         self.radice.title(UI_TEXT["titolo_finestra"])
         self.radice.geometry("1080x720")
@@ -118,6 +129,9 @@ class ApplicazioneHaria:
             font=("TkDefaultFont", 11),
         )
         self.editor_scenario.grid(row=0, column=0, sticky="nsew")
+        self.editor_scenario.bind(
+            "<<Modified>>", self._rileva_modifica_scenario
+        )
         scorrimento = ttk.Scrollbar(
             scheda_scenario, orient=tk.VERTICAL, command=self.editor_scenario.yview
         )
@@ -182,20 +196,28 @@ class ApplicazioneHaria:
             self._mostra_mondo(mondi[0])
 
     def _mostra_mondo(self, mondo: Mondo) -> None:
-        self.mondo_corrente = mondo
-        self.etichetta_titolo.configure(text=mondo.titolo)
-        self.etichetta_versione.configure(
-            text=UI_TEXT["versione"].format(numero=mondo.versione_corrente)
-        )
-        self.editor_scenario.configure(state=tk.NORMAL)
-        self.editor_scenario.delete("1.0", tk.END)
-        self.editor_scenario.insert("1.0", mondo.scenario)
-        self._mostra_impostazioni(mondo.impostazioni_narrative)
+        self._caricamento_interfaccia = True
+        try:
+            self.mondo_corrente = mondo
+            self.etichetta_titolo.configure(text=mondo.titolo)
+            self.etichetta_versione.configure(
+                text=UI_TEXT["versione"].format(numero=mondo.versione_corrente)
+            )
+            self.editor_scenario.configure(state=tk.NORMAL)
+            self.editor_scenario.delete("1.0", tk.END)
+            self.editor_scenario.insert("1.0", mondo.scenario)
+            self.editor_scenario.edit_modified(False)
+            self._mostra_impostazioni(mondo.impostazioni_narrative)
+            self.stato_editor.carica(
+                mondo.scenario, mondo.impostazioni_narrative
+            )
+        finally:
+            self._caricamento_interfaccia = False
         self._aggiorna_cronologia()
         self.pulsante_salva.configure(state=tk.NORMAL)
         self.pulsante_esporta.configure(state=tk.NORMAL)
         self.pulsante_ripristina.configure(state=tk.NORMAL)
-        self.etichetta_stato.configure(text=UI_TEXT["stato_pronto"])
+        self._aggiorna_indicatore_modifiche()
 
     def _mostra_impostazioni(self, impostazioni: dict[str, str]) -> None:
         for elemento in self.scheda_impostazioni.winfo_children():
@@ -214,7 +236,44 @@ class ApplicazioneHaria:
             ttk.Entry(
                 self.scheda_impostazioni, textvariable=variabile, width=70
             ).grid(row=riga, column=1, sticky="ew", pady=6)
+            variabile.trace_add(
+                "write",
+                lambda *_eventi, chiave=chiave, variabile=variabile: (
+                    self._rileva_modifica_impostazione(chiave, variabile)
+                ),
+            )
             self.campi_impostazioni[chiave] = variabile
+
+    def _rileva_modifica_scenario(self, _evento: object | None = None) -> None:
+        if not self.editor_scenario.edit_modified():
+            return
+        self.editor_scenario.edit_modified(False)
+        if self._caricamento_interfaccia or self.mondo_corrente is None:
+            return
+        self.stato_editor.aggiorna_scenario(
+            self.editor_scenario.get("1.0", "end-1c")
+        )
+        self._aggiorna_indicatore_modifiche()
+
+    def _rileva_modifica_impostazione(
+        self, chiave: str, variabile: tk.StringVar
+    ) -> None:
+        if self._caricamento_interfaccia or self.mondo_corrente is None:
+            return
+        self.stato_editor.aggiorna_impostazione(chiave, variabile.get())
+        self._aggiorna_indicatore_modifiche()
+
+    def _aggiorna_indicatore_modifiche(self) -> None:
+        if self.stato_editor.modificato:
+            self.radice.title(
+                UI_TEXT["titolo_modificato"].format(
+                    titolo=UI_TEXT["titolo_finestra"]
+                )
+            )
+            self.etichetta_stato.configure(text=UI_TEXT["modifiche_non_salvate"])
+            return
+        self.radice.title(UI_TEXT["titolo_finestra"])
+        self.etichetta_stato.configure(text=UI_TEXT["stato_pronto"])
 
     def _aggiorna_cronologia(self) -> None:
         for elemento in self.albero_versioni.get_children():
@@ -233,6 +292,8 @@ class ApplicazioneHaria:
         cartella = filedialog.askdirectory(title=UI_TEXT["seleziona_sorgente"])
         if not cartella:
             return
+        if not self._puo_proseguire_con_modifiche("importare un altro mondo"):
+            return
         try:
             mondo = self.servizio.importa_da_cartella(cartella)
             self._mostra_mondo(mondo)
@@ -243,8 +304,11 @@ class ApplicazioneHaria:
             messagebox.showerror(UI_TEXT["errore"], str(errore))
 
     def _salva_da_interfaccia(self) -> None:
+        self._salva_senza_dialogo(mostra_conferma=True)
+
+    def _salva_senza_dialogo(self, *, mostra_conferma: bool = False) -> bool:
         if self.mondo_corrente is None:
-            return
+            return False
         scenario = self.editor_scenario.get("1.0", "end-1c")
         impostazioni = {
             chiave: variabile.get()
@@ -255,11 +319,33 @@ class ApplicazioneHaria:
                 self.mondo_corrente.id, scenario, impostazioni
             )
             self._mostra_mondo(mondo)
-            messagebox.showinfo(
-                UI_TEXT["operazione_completata"], UI_TEXT["salvataggio_completato"]
-            )
+            if mostra_conferma:
+                messagebox.showinfo(
+                    UI_TEXT["operazione_completata"],
+                    UI_TEXT["salvataggio_completato"],
+                )
+            return True
         except ErroreHaria as errore:
             messagebox.showerror(UI_TEXT["errore"], str(errore))
+            return False
+
+    def _puo_proseguire_con_modifiche(self, azione: str) -> bool:
+        if not self.stato_editor.modificato:
+            return True
+        risposta = messagebox.askyesnocancel(
+            UI_TEXT["modifiche_non_salvate"],
+            UI_TEXT["conferma_modifiche_non_salvate"].format(azione=azione),
+        )
+        if risposta is True:
+            scelta = SceltaModifiche.SALVA
+        elif risposta is False:
+            scelta = SceltaModifiche.SCARTA
+        else:
+            scelta = SceltaModifiche.ANNULLA
+        return self.stato_editor.consenti_operazione(
+            scelta,
+            lambda: self._salva_senza_dialogo(mostra_conferma=False),
+        )
 
     def _ripristina_da_interfaccia(self) -> None:
         if self.mondo_corrente is None:
@@ -274,6 +360,10 @@ class ApplicazioneHaria:
             UI_TEXT["conferma_ripristino"].format(numero=numero),
         )
         if not conferma:
+            return
+        if not self._puo_proseguire_con_modifiche(
+            "ripristinare la versione selezionata"
+        ):
             return
         try:
             mondo = self.servizio.ripristina(self.mondo_corrente.id, numero)
@@ -302,6 +392,8 @@ class ApplicazioneHaria:
             messagebox.showerror(UI_TEXT["errore"], str(errore))
 
     def chiudi(self) -> None:
+        if not self._puo_proseguire_con_modifiche("chiudere l'applicazione"):
+            return
         self.servizio.chiudi()
         self.radice.destroy()
 
