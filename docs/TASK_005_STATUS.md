@@ -33,7 +33,7 @@ python -m unittest discover -s tests -v
 python -m haria_engine --check --database C:\percorso\temporaneo\haria.sqlite3
 ```
 
-La suite comprende **177 test**: 127 test precedenti e 50 test Task 005. Le
+La suite comprende **178 test**: 127 test precedenti e 51 test Task 005. Le
 prove del validatore includono mondo integro, riferimenti mancanti, luoghi e
 possessori incoerenti, accessibilità, tempi, memorie dell'attore, sequenze,
 immutabilità, assenza di scritture e assenza di rete.

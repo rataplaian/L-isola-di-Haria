@@ -355,6 +355,46 @@ class TestTask005(unittest.TestCase):
         esito = valida_sequenza_pura(self.fotografia, proposte, RIFERIMENTO)
         self.assertIn("sequenza_temporale_non_ordinata", self.codici(esito.rapporto))
 
+    def test_proposta_invalida_non_arretra_il_cursore_temporale(self) -> None:
+        t0 = RIFERIMENTO
+        t1 = RIFERIMENTO + timedelta(minutes=1)
+        t2 = RIFERIMENTO + timedelta(minutes=2)
+        fotografia_originale = self.fotografia
+        database_originale = self.fotografia_database()
+        proposte = (
+            PropostaCambioStato(
+                "luca", condition="vigile", occurred_at=t2.isoformat()
+            ),
+            PropostaCambioStato(
+                "luca", condition="allerta", occurred_at=t0.isoformat()
+            ),
+            PropostaCambioStato(
+                "luca", condition="stanco", occurred_at=t1.isoformat()
+            ),
+        )
+
+        esito = valida_sequenza_pura(
+            fotografia_originale, proposte, RIFERIMENTO
+        )
+
+        self.assertTrue(esito.esiti[0].rapporto.superata)
+        self.assertIn(
+            "sequenza_temporale_non_ordinata",
+            self.codici(esito.esiti[1].rapporto),
+        )
+        self.assertIn(
+            "sequenza_temporale_non_ordinata",
+            self.codici(esito.esiti[2].rapporto),
+        )
+        self.assertEqual(esito.esiti[1].fotografia, esito.esiti[0].fotografia)
+        self.assertEqual(esito.esiti[2].fotografia, esito.esiti[0].fotografia)
+        self.assertEqual(
+            self.entita("luca", esito.fotografia_finale).condition, "vigile"
+        )
+        self.assertEqual(self.fotografia, fotografia_originale)
+        self.assertIsNone(self.entita("luca", fotografia_originale).condition)
+        self.assertEqual(self.fotografia_database(), database_originale)
+
     def test_memoria_dell_attore_valida(self) -> None:
         memoria = next(
             m for m in self.fotografia.memorie if m.character_id == "elise_moreau"

@@ -165,7 +165,7 @@ python3 -m unittest discover -s tests -v
 python3 -m haria_engine --check
 ```
 
-La suite corrente contiene **177 test automatici** per Task 001, Task 002,
+La suite corrente contiene **178 test automatici** per Task 001, Task 002,
 Task 003, Task 004 e Task 005. I test Ollama usano trasporti simulati e non
 effettuano richieste verso servizi reali; i test del validatore verificano
 anche che database e configurazione AI rimangano invariati.

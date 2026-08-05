@@ -214,6 +214,8 @@ def valida_sequenza_pura(
         rapporto_proposta = crea_rapporto(problemi_proposta)
         if rapporto_proposta.superata:
             proiezione = applica_in_memoria(proiezione, proposta)
+            if istante is not None:
+                ultimo_istante = istante
         esiti.append(
             EsitoProposta(
                 indice=indice,
@@ -223,8 +225,6 @@ def valida_sequenza_pura(
             )
         )
         problemi_completi.extend(rapporto_proposta.problemi)
-        if istante is not None:
-            ultimo_istante = istante
 
     return EsitoSequenza(
         esiti=tuple(esiti),
