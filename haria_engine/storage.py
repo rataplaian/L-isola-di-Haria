@@ -1183,10 +1183,18 @@ class ArchivioSQLite:
         self.carica_mondo(mondo_id)
         righe = self._connessione.execute(
             """
-            SELECT event_id, world_id, event_type, occurred_at, actor_id,
-                   target_id, location_id, payload, reason, created_at
-            FROM events WHERE world_id = ?
-            ORDER BY occurred_at, created_at, event_id
+            SELECT e.event_id, e.world_id, e.event_type, e.occurred_at,
+                   e.actor_id, e.target_id, e.location_id, e.payload,
+                   e.reason, e.created_at
+            FROM events AS e
+            LEFT JOIN narrative_turn_events AS nte
+              ON nte.world_id = e.world_id AND nte.event_id = e.event_id
+            LEFT JOIN narrative_turns AS nt
+              ON nt.world_id = nte.world_id AND nt.turn_id = nte.turn_id
+            WHERE e.world_id = ?
+            ORDER BY e.occurred_at, e.created_at,
+                     CASE WHEN nte.turn_id IS NULL THEN 1 ELSE 0 END,
+                     nt.sequence_number, nte.operation_index, e.event_id
             """,
             (mondo_id,),
         ).fetchall()
@@ -1218,6 +1226,10 @@ class ArchivioSQLite:
                    e.actor_id, e.target_id, e.location_id, e.payload,
                    e.reason, e.created_at
             FROM events AS e
+            LEFT JOIN narrative_turn_events AS nte
+              ON nte.world_id = e.world_id AND nte.event_id = e.event_id
+            LEFT JOIN narrative_turns AS nt
+              ON nt.world_id = nte.world_id AND nt.turn_id = nte.turn_id
             WHERE e.world_id = ?
               AND EXISTS (
                   SELECT 1
@@ -1226,7 +1238,9 @@ class ArchivioSQLite:
                     AND ee.world_id = e.world_id
                     AND ee.entity_id = ?
               )
-            ORDER BY e.occurred_at, e.created_at, e.event_id
+            ORDER BY e.occurred_at, e.created_at,
+                     CASE WHEN nte.turn_id IS NULL THEN 1 ELSE 0 END,
+                     nt.sequence_number, nte.operation_index, e.event_id
             """,
             (mondo_id, entity_id),
         ).fetchall()
@@ -1418,8 +1432,14 @@ class ArchivioSQLite:
             LEFT JOIN world_entities AS fonte
               ON fonte.world_id = m.world_id
              AND fonte.entity_id = m.source_entity_id
+            LEFT JOIN narrative_turn_memories AS ntm
+              ON ntm.world_id = m.world_id AND ntm.memory_id = m.memory_id
+            LEFT JOIN narrative_turns AS nt
+              ON nt.world_id = ntm.world_id AND nt.turn_id = ntm.turn_id
             WHERE {condizione}
-            ORDER BY m.learned_at, m.created_at, m.memory_id
+            ORDER BY m.learned_at, m.created_at,
+                     CASE WHEN ntm.turn_id IS NULL THEN 1 ELSE 0 END,
+                     nt.sequence_number, ntm.memory_index, m.memory_id
             """,
             parametri,
         ).fetchall()

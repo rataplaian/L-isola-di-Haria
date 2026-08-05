@@ -404,6 +404,12 @@ class ServizioNarrativo:
             voce.memory_id: voce for voce in fotografia_iniziale.memorie
         }
         eventi = {voce.operation_index: voce for voce in piano.eventi}
+        tipi_conoscenza_ammessi = {
+            "direct_observation": {"observed_fact"},
+            "told_by_character": {"reported_fact"},
+            "inference": {"inference", "belief"},
+            "self_experience": {"observed_fact", "belief"},
+        }
         for indice, memoria in enumerate(proposta.memories):
             personaggio = entita.get(memoria.character_id)
             if personaggio is None or personaggio.entity_type != TIPO_PERSONAGGIO:
@@ -413,6 +419,36 @@ class ServizioNarrativo:
             if memoria.source_type == "imported_background":
                 raise ErroreTurnoNarrativo(
                     "Il modello non può creare memorie di sfondo importate."
+                )
+            if memoria.knowledge_type == "canonical_knowledge":
+                raise ErroreTurnoNarrativo(
+                    "Il modello non può creare conoscenze canoniche."
+                )
+            conoscenze_ammesse = tipi_conoscenza_ammessi.get(memoria.source_type)
+            if (
+                conoscenze_ammesse is None
+                or memoria.knowledge_type not in conoscenze_ammesse
+            ):
+                raise ErroreTurnoNarrativo(
+                    f"Il tipo di conoscenza della memoria {indice + 1} non è coerente con la fonte."
+                )
+            if memoria.source_type == "told_by_character":
+                if memoria.source_entity_id is None:
+                    raise ErroreTurnoNarrativo(
+                        "Una memoria raccontata richiede un personaggio come fonte."
+                    )
+            elif memoria.source_entity_id is not None:
+                raise ErroreTurnoNarrativo(
+                    f"La memoria {indice + 1} non deve indicare un'entità fonte."
+                )
+            if memoria.source_type == "inference":
+                if not memoria.source_memory_ids:
+                    raise ErroreTurnoNarrativo(
+                        "Una inferenza richiede almeno una memoria sorgente."
+                    )
+            elif memoria.source_memory_ids:
+                raise ErroreTurnoNarrativo(
+                    f"La memoria {indice + 1} non inferenziale non può indicare memorie sorgente."
                 )
             fonte = (
                 None
@@ -466,11 +502,6 @@ class ServizioNarrativo:
                 if fonte.entity_id == memoria.character_id:
                     raise ErroreTurnoNarrativo(
                         "Fonte e ascoltatore della memoria devono essere distinti."
-                    )
-            elif memoria.source_type == "inference":
-                if not memoria.source_memory_ids:
-                    raise ErroreTurnoNarrativo(
-                        "Una inferenza richiede almeno una memoria sorgente."
                     )
 
     def _memorie_correnti(

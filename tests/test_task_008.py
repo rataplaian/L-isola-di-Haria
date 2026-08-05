@@ -157,6 +157,25 @@ class BaseTask008(unittest.TestCase):
 
 
 class TestSessioniETurni(BaseTask008):
+    def test_prompt_dichiara_natura_adulta_e_autonomia(self) -> None:
+        sistema = self.prepara().messaggi[0].contenuto
+        for istruzione in (
+            "destinato esclusivamente a un pubblico adulto",
+            "sessualità tra adulti",
+            "coercizione",
+            "schiavitù",
+            "conflitti etnici e culturali",
+            "salute mentale",
+            "abuso di potere",
+            "rifiuti morali generici",
+            "automaticamente disponibili, innamorate, obbedienti o consenzienti",
+            "volontà, consenso, opposizione e conseguenze",
+            "esclusivamente personaggi adulti",
+            "controllo esclusivo di Alba",
+        ):
+            with self.subTest(istruzione=istruzione):
+                self.assertIn(istruzione, sistema)
+
     def test_schema_finale_e_sei(self) -> None:
         versione = self.servizio.archivio._connessione.execute(
             "PRAGMA user_version"
@@ -227,6 +246,68 @@ class TestSessioniETurni(BaseTask008):
         self.assertEqual("allerta", alba.status)
         self.assertEqual(2, len(self.servizio.archivio.elenca_eventi(self.mondo.id)))
 
+    def test_eventi_del_turno_rispettano_indice_operazione(self) -> None:
+        operazioni = [
+            {
+                "type": "event",
+                "event_type": "primo_evento",
+                "actor_id": "alba",
+                "location_id": "laboratorio",
+                "reason": "Primo motivo.",
+            },
+            {
+                "type": "event",
+                "event_type": "secondo_evento",
+                "actor_id": "alba",
+                "location_id": "laboratorio",
+                "reason": "Secondo motivo.",
+            },
+        ]
+        self.servizio.narrativa.salva_risposta_turno(
+            self.prepara(), output_turno(operations=operazioni)
+        )
+        attesi = ["Primo motivo.", "Secondo motivo."]
+        self.assertEqual(
+            attesi,
+            [
+                evento.reason
+                for evento in self.servizio.archivio.elenca_eventi(self.mondo.id)
+            ],
+        )
+        self.assertEqual(
+            attesi,
+            [
+                evento.reason
+                for evento in self.servizio.archivio.eventi_per_entita(
+                    self.mondo.id, "alba"
+                )
+            ],
+        )
+
+    def test_memorie_del_turno_rispettano_indice_memoria(self) -> None:
+        memorie = [
+            memoria_osservata(
+                source_type="self_experience",
+                operation_index=None,
+                content="Prima memoria del turno.",
+            ),
+            memoria_osservata(
+                source_type="self_experience",
+                operation_index=None,
+                content="Seconda memoria del turno.",
+            ),
+        ]
+        self.servizio.narrativa.salva_risposta_turno(
+            self.prepara(), output_turno(memories=memorie)
+        )
+        rilette = self.servizio.archivio.elenca_memorie_personaggio(
+            self.mondo.id, "alba"
+        )
+        self.assertEqual(
+            ["Prima memoria del turno.", "Seconda memoria del turno."],
+            [memoria.content for memoria in rilette[-2:]],
+        )
+
     def test_memoria_candidata_collegata_all_evento(self) -> None:
         self.servizio.narrativa.salva_risposta_turno(
             self.prepara(),
@@ -281,6 +362,49 @@ class TestSessioniETurni(BaseTask008):
 
 
 class TestRollbackAtomico(BaseTask008):
+    def test_conoscenza_canonica_generata_non_scrive_nulla(self) -> None:
+        preparato = self.prepara()
+        prima = self.fotografia()
+        memoria = memoria_osservata(knowledge_type="canonical_knowledge")
+        with self.assertRaisesRegex(ErroreTurnoNarrativo, "conoscenze canoniche"):
+            self.servizio.narrativa.salva_risposta_turno(
+                preparato,
+                output_turno(
+                    operations=[operazione_evento()], memories=[memoria]
+                ),
+            )
+        self.assertEqual(prima, self.fotografia())
+
+    def test_belief_da_osservazione_diretta_non_scrive_nulla(self) -> None:
+        preparato = self.prepara()
+        prima = self.fotografia()
+        memoria = memoria_osservata(knowledge_type="belief")
+        with self.assertRaisesRegex(ErroreTurnoNarrativo, "non è coerente"):
+            self.servizio.narrativa.salva_risposta_turno(
+                preparato,
+                output_turno(
+                    operations=[operazione_evento()], memories=[memoria]
+                ),
+            )
+        self.assertEqual(prima, self.fotografia())
+
+    def test_memoria_non_inferenziale_con_fonti_non_scrive_nulla(self) -> None:
+        memoria_esistente = self.servizio.archivio.elenca_memorie_personaggio(
+            self.mondo.id, "alba"
+        )[0]
+        preparato = self.prepara()
+        prima = self.fotografia()
+        memoria = memoria_osservata(
+            source_type="self_experience",
+            operation_index=None,
+            source_memory_ids=[memoria_esistente.memory_id],
+        )
+        with self.assertRaisesRegex(ErroreTurnoNarrativo, "non inferenziale"):
+            self.servizio.narrativa.salva_risposta_turno(
+                preparato, output_turno(memories=[memoria])
+            )
+        self.assertEqual(prima, self.fotografia())
+
     def test_osservazione_diretta_senza_operazione_non_scrive_nulla(self) -> None:
         preparato = self.prepara()
         prima = self.fotografia()
@@ -307,6 +431,7 @@ class TestRollbackAtomico(BaseTask008):
         preparato = self.prepara()
         prima = self.fotografia()
         memoria = memoria_osservata(
+            knowledge_type="reported_fact",
             source_type="told_by_character",
             source_entity_id="alba",
             operation_index=None,
