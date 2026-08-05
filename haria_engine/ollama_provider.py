@@ -176,4 +176,3 @@ def _verifica_status(risposta: RispostaHTTP) -> None:
         raise ErroreHTTPProvider(
             "Il servizio Ollama ha restituito un errore HTTP."
         )
-

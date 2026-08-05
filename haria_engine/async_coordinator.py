@@ -92,4 +92,3 @@ class CoordinatoreAsincrono:
                 self._coda.get_nowait()
             except queue.Empty:
                 return
-

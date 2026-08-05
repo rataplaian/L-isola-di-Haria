@@ -43,4 +43,3 @@ class ServizioAI:
             updated_at=configurazione.updated_at,
         )
         return OllamaProvider(valida, self._trasporto)
-

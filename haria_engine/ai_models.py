@@ -140,4 +140,3 @@ def _host_loopback_valido(host: str) -> bool:
         return ipaddress.ip_address(host).is_loopback
     except ValueError:
         return False
-

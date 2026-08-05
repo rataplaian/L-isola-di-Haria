@@ -63,4 +63,3 @@ servizi reali.
 - HTTPS su loopback è accettato, ma certificati e configurazione TLS restano a
   carico dell'utente e del servizio Ollama.
 - Il Task 004 non valuta la qualità o l'idoneità narrativa del modello.
-
