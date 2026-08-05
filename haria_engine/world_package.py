@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import mimetypes
 import re
 import shutil
 import stat
@@ -213,8 +212,27 @@ def _percorso_sicuro(valore: str) -> str:
     return posix.as_posix()
 
 
+def _valida_rappresentazioni_entita(
+    file_percorso: Mapping[str, FileSorgente],
+) -> None:
+    for aggregato, prefisso, descrizione in (
+        ("characters.json", "characters/", "personaggi"),
+        ("locations.json", "locations/", "luoghi"),
+        ("items.json", "items/", "oggetti"),
+    ):
+        individuali = any(
+            percorso.startswith(prefisso) and percorso.casefold().endswith(".json")
+            for percorso in file_percorso
+        )
+        if aggregato in file_percorso and individuali:
+            raise ErroreImportazione(
+                f"Il pacchetto contiene sia {aggregato} sia file individuali per {descrizione}."
+            )
+
+
 def _costruisci_pacchetto(file_sorgente: tuple[FileSorgente, ...]) -> PacchettoMondo:
     file_percorso = {file.percorso_relativo: file for file in file_sorgente}
+    _valida_rappresentazioni_entita(file_percorso)
     if "world.json" not in file_percorso:
         raise ErrorePacchettoCompleto("Nel pacchetto manca il file world.json.")
     world = _leggi_json_oggetto(file_percorso["world.json"], "world.json")
@@ -254,7 +272,9 @@ def _costruisci_pacchetto(file_sorgente: tuple[FileSorgente, ...]) -> PacchettoM
     _valida_player_character(world, entita)
     documenti = _documenti(world_id, manifest, file_percorso)
     media = _media(world_id, manifest, file_percorso, entita)
-    _valida_immagini_entita(entita, {voce.relative_path for voce in media})
+    _valida_immagini_entita(
+        entita, {voce.relative_path: voce for voce in media}
+    )
     return PacchettoMondo(
         world_id, title, language, scenario, _impostazioni(world), file_sorgente,
         entita, documenti, media, True
@@ -316,7 +336,10 @@ def _documenti(
         dichiarazione = per_percorso.get(percorso, {})
         tipo = str(dichiarazione.get("type") or _tipo_documento(percorso))
         titolo = str(dichiarazione.get("title") or _titolo_percorso(percorso))
-        document_id = str(dichiarazione.get("id") or _id_deterministico("doc", world_id, percorso, file.sha256))
+        document_id = str(
+            dichiarazione.get("id")
+            or _id_deterministico("doc", world_id, percorso)
+        )
         if not document_id.strip() or document_id in ids:
             raise ErroreImportazione("Un identificatore documento è vuoto o duplicato.")
         ids.add(document_id)
@@ -358,16 +381,19 @@ def _media(
         estensione = PurePosixPath(percorso).suffix.casefold()
         mime = MEDIA_MIME.get(estensione)
         if mime is None:
-            mime = mimetypes.guess_type(percorso)[0]
-        if mime is None:
-            raise ErroreImportazione(f"Il formato media di {percorso} non è riconosciuto.")
+            raise ErroreImportazione(
+                f"Il file {percorso} usa un formato non ammesso nella cartella media."
+            )
         dichiarazione = per_percorso.get(percorso, {})
         entity_id = dichiarazione.get("entity_id")
         if entity_id is not None and entity_id not in entity_ids:
             raise ErroreImportazione(
                 f"Il media {percorso} fa riferimento a un'entità inesistente."
             )
-        media_id = str(dichiarazione.get("id") or _id_deterministico("media", world_id, percorso, file.sha256))
+        media_id = str(
+            dichiarazione.get("id")
+            or _id_deterministico("media", world_id, percorso)
+        )
         if not media_id.strip() or media_id in ids:
             raise ErroreImportazione("Un identificatore media è vuoto o duplicato.")
         ids.add(media_id)
@@ -401,13 +427,24 @@ def _valida_player_character(world: Mapping[str, object], entita: tuple[object, 
         )
 
 
-def _valida_immagini_entita(entita: tuple[object, ...], media_paths: set[str]) -> None:
+def _valida_immagini_entita(
+    entita: tuple[object, ...], media_percorso: Mapping[str, MediaCanonico]
+) -> None:
     ids = {getattr(voce, "entity_id") for voce in entita}
     for voce in entita:
         immagine = getattr(voce, "canonical_data").get("image")
-        if immagine is not None and immagine not in media_paths:
+        if immagine is not None and immagine not in media_percorso:
             raise ErroreImportazione(
                 f"L'immagine indicata per {getattr(voce, 'canonical_name')} non esiste."
+            )
+        if (
+            immagine is not None
+            and getattr(voce, "entity_type") == "personaggio"
+            and media_percorso[immagine].entity_id != getattr(voce, "entity_id")
+        ):
+            raise ErroreImportazione(
+                f"L'immagine indicata per {getattr(voce, 'canonical_name')} "
+                "non è associata a quel personaggio."
             )
         relazioni = getattr(voce, "canonical_data").get("relationships", [])
         if relazioni is None:
@@ -508,9 +545,10 @@ def _impostazioni(world: Mapping[str, object]) -> dict[str, str]:
     return risultato
 
 
-def _id_deterministico(prefisso: str, world_id: str, percorso: str, sha256: str) -> str:
+def _id_deterministico(prefisso: str, world_id: str, percorso: str) -> str:
+    percorso_normalizzato = _percorso_sicuro(percorso).casefold()
     impronta = hashlib.sha256(
-        "\x00".join((world_id, percorso.casefold(), sha256)).encode("utf-8")
+        "\x00".join((prefisso, world_id, percorso_normalizzato)).encode("utf-8")
     ).hexdigest()
     return f"{prefisso}_{impronta}"
 

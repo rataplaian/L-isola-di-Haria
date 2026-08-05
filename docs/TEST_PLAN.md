@@ -82,6 +82,6 @@ Risultati:
 - nessuna rete o modifica dei sorgenti;
 - GUI italiana senza JSON o identificatori tecnici.
 
-La suite Task 001–006 contiene **206 test automatici** e usa soltanto database,
+La suite Task 001–006 contiene **212 test automatici** e usa soltanto database,
 cartelle, ZIP e media tecnici temporanei. I materiali reali locali non sono
 fixture automatiche.

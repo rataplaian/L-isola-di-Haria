@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import re
 import shutil
 import sqlite3
 import stat
@@ -29,6 +30,7 @@ from haria_engine.world_package import (
     importa_pacchetto_da_cartella,
     importa_pacchetto_da_zip,
 )
+from tools.build_local_haria_package import costruisci
 
 
 RADICE_PROGETTO = Path(__file__).resolve().parents[1]
@@ -207,6 +209,150 @@ class TestTask006(unittest.TestCase):
         cartella = importa_pacchetto_da_cartella(self.pacchetto)
         compresso = importa_pacchetto_da_zip(archivio)
         self.assertEqual(cartella, compresso)
+
+    def test_id_automatici_restano_stabili_se_cambiano_i_contenuti(self) -> None:
+        manifest = json.loads(
+            (self.pacchetto / "manifest.json").read_text(encoding="utf-8")
+        )
+        manifest["media"][0].pop("id")
+        scrivi_json(self.pacchetto / "manifest.json", manifest)
+        prima = importa_pacchetto_da_cartella(self.pacchetto)
+        documento_prima = next(
+            voce for voce in prima.documents if voce.relative_path == "scenario.md"
+        )
+        media_prima = prima.media[0]
+
+        (self.pacchetto / "scenario.md").write_text(
+            "# Scenario\n\nContenuto sostituito.\n", encoding="utf-8"
+        )
+        (self.pacchetto / "media" / "characters" / "alba.png").write_bytes(
+            PNG_1X1 + b"byte-sostituiti"
+        )
+        aggiorna_manifest(self.pacchetto)
+        dopo = importa_pacchetto_da_cartella(self.pacchetto)
+        documento_dopo = next(
+            voce for voce in dopo.documents if voce.relative_path == "scenario.md"
+        )
+        media_dopo = dopo.media[0]
+
+        self.assertEqual(documento_prima.document_id, documento_dopo.document_id)
+        self.assertNotEqual(documento_prima.sha256, documento_dopo.sha256)
+        self.assertEqual(media_prima.media_id, media_dopo.media_id)
+        self.assertNotEqual(media_prima.sha256, media_dopo.sha256)
+
+    def test_export_e_reimport_conservano_gli_id_automatici(self) -> None:
+        manifest = json.loads(
+            (self.pacchetto / "manifest.json").read_text(encoding="utf-8")
+        )
+        for documento in manifest["documents"]:
+            documento.pop("id", None)
+        manifest["media"][0].pop("id")
+        scrivi_json(self.pacchetto / "manifest.json", manifest)
+        with ServizioMondi(self.database) as servizio:
+            mondo = servizio.importa_da_cartella(self.pacchetto)
+            documenti_prima = {
+                voce.relative_path: voce.document_id
+                for voce in servizio.elenca_documenti(mondo.id)
+            }
+            media_prima = {
+                voce.relative_path: voce.media_id
+                for voce in servizio.elenca_media(mondo.id)
+            }
+            esportato = servizio.esporta(mondo.id, self.radice / "export_id").cartella
+        with ServizioMondi(self.radice / "reimport_id.sqlite3") as servizio:
+            reimportato = servizio.importa_da_cartella(esportato)
+            documenti_dopo = {
+                voce.relative_path: voce.document_id
+                for voce in servizio.elenca_documenti(reimportato.id)
+            }
+            media_dopo = {
+                voce.relative_path: voce.media_id
+                for voce in servizio.elenca_media(reimportato.id)
+            }
+        self.assertEqual(documenti_prima, documenti_dopo)
+        self.assertEqual(media_prima, media_dopo)
+
+    def test_rappresentazioni_aggregate_e_individuali_non_possono_coesistere(self) -> None:
+        casi = (
+            ("characters.json", "characters", "personaggi"),
+            ("locations.json", "locations", "luoghi"),
+            ("items.json", "items", "oggetti"),
+        )
+        for indice, (aggregato, _cartella, descrizione) in enumerate(casi):
+            with self.subTest(categoria=descrizione):
+                pacchetto = crea_pacchetto_completo(
+                    self.radice, world_id=f"misto_{indice}"
+                )
+                scrivi_json(pacchetto / aggregato, [])
+                aggiorna_manifest(pacchetto)
+                with self.assertRaisesRegex(
+                    ErroreImportazione, rf"sia {re.escape(aggregato)}.*{descrizione}"
+                ):
+                    importa_pacchetto_da_cartella(pacchetto)
+
+    def test_file_testuale_nella_cartella_media_viene_rifiutato(self) -> None:
+        nota = self.pacchetto / "media" / "nota.txt"
+        nota.write_text("Non è un media.", encoding="utf-8")
+        aggiorna_manifest(self.pacchetto)
+        with self.assertRaisesRegex(ErroreImportazione, "non ammesso.*media"):
+            importa_pacchetto_da_cartella(self.pacchetto)
+
+    def test_immagine_del_personaggio_deve_avere_la_stessa_associazione(self) -> None:
+        manifest = json.loads(
+            (self.pacchetto / "manifest.json").read_text(encoding="utf-8")
+        )
+        manifest["media"][0]["entity_id"] = "bruno"
+        scrivi_json(self.pacchetto / "manifest.json", manifest)
+        with self.assertRaisesRegex(
+            ErroreImportazione, "non è associata a quel personaggio"
+        ):
+            importa_pacchetto_da_cartella(self.pacchetto)
+
+    def test_builder_preserva_scenario_e_campi_integrali_dei_profili(self) -> None:
+        sorgente = self.radice / "materiali_builder"
+        scenario_md = b"# Scenario originale\r\n\r\nTesto gi\xc3\xa0 leggibile.\r\n"
+        scenario_json = b'{"origine":"integrale"}\r\n'
+        (sorgente / "scenario").mkdir(parents=True)
+        (sorgente / "scenario" / "scenario_iniziale.md").write_bytes(scenario_md)
+        (sorgente / "scenario" / "scenario_iniziale.json").write_bytes(
+            scenario_json
+        )
+        scrivi_json(
+            sorgente / "personaggi" / "profili_cast_iniziale.json",
+            {
+                "Luca": {"text": "Profilo di Luca", "campo_luca": 1},
+                "Alba": {
+                    "id": "id_sorgente",
+                    "name": "Nome sorgente",
+                    "text": "Profilo sorgente integrale",
+                    "campo_sconosciuto": {"preservato": True},
+                },
+            },
+        )
+        immagini = sorgente / "immagini"
+        immagini.mkdir()
+        (immagini / "Alba.png").write_bytes(PNG_1X1)
+        destinazione = self.radice / "pacchetto_builder"
+
+        costruisci(sorgente, destinazione)
+
+        self.assertEqual(scenario_md, (destinazione / "scenario.md").read_bytes())
+        self.assertEqual(
+            scenario_json,
+            (destinazione / "source" / "scenario_iniziale.json").read_bytes(),
+        )
+        alba = json.loads(
+            (destinazione / "characters" / "alba.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual("alba", alba["id"])
+        self.assertEqual("Alba", alba["name"])
+        self.assertEqual({"preservato": True}, alba["campo_sconosciuto"])
+        self.assertEqual("Profilo sorgente integrale", alba["text"])
+        self.assertNotIn("profile", alba)
+        self.assertEqual("media/characters/Alba.png", alba["image"])
+        testo_gui = formatta_canone_personaggio(alba)
+        self.assertIn("Profilo", testo_gui)
+        self.assertEqual(1, testo_gui.count("Profilo sorgente integrale"))
 
     def test_modelli_pacchetto_hanno_mappature_immutabili(self) -> None:
         pacchetto = importa_pacchetto_da_cartella(self.pacchetto)

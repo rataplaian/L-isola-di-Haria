@@ -27,55 +27,19 @@ def _id_personaggio(nome: str) -> str:
     return re.sub(r"[^a-z0-9]+", "_", base).strip("_")
 
 
+def _id_deterministico(prefisso: str, world_id: str, percorso: str) -> str:
+    normalizzato = Path(percorso.replace("\\", "/")).as_posix().casefold()
+    impronta = hashlib.sha256(
+        "\0".join((prefisso, world_id, normalizzato)).encode("utf-8")
+    ).hexdigest()
+    return f"{prefisso}_{impronta}"
+
+
 def _scrivi_json(percorso: Path, dati: object) -> None:
     percorso.parent.mkdir(parents=True, exist_ok=True)
     percorso.write_text(
         json.dumps(dati, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
     )
-
-
-def _scenario_leggibile(dati: object) -> str:
-    etichette = {
-        "identity": "Identità",
-        "mandatory_language": "Lingua obbligatoria",
-        "player_character": "Personaggio del giocatore",
-        "name": "Nome",
-        "age": "Età",
-        "height_cm": "Altezza in centimetri",
-        "initial_memory": "Memoria iniziale",
-        "user_controls": "Controllato dall'utente",
-        "layla_controls": "Controllato dalla narratrice",
-        "persistent_condition": "Condizione persistente",
-        "automatic_narration_rules": "Regole automatiche di narrazione",
-        "campaign_start": "Inizio della campagna",
-        "date": "Data",
-        "location": "Luogo",
-        "first_responder": "Prima soccorritrice",
-        "active_pressures": "Pressioni attive",
-    }
-
-    def etichetta(chiave: str) -> str:
-        return etichette.get(chiave, chiave.replace("_", " ").capitalize())
-
-    righe = ["# Scenario iniziale di Haria", ""]
-    if not isinstance(dati, dict):
-        raise ValueError("Lo scenario sorgente non contiene un oggetto valido.")
-    for chiave, valore in dati.items():
-        righe.extend((f"## {etichetta(str(chiave))}", ""))
-        if isinstance(valore, dict):
-            for sottochiave, sottovalore in valore.items():
-                righe.append(f"### {etichetta(str(sottochiave))}")
-                if isinstance(sottovalore, list):
-                    righe.extend(f"- {voce}" for voce in sottovalore)
-                else:
-                    righe.append(str(sottovalore))
-                righe.append("")
-        elif isinstance(valore, list):
-            righe.extend(f"- {voce}" for voce in valore)
-            righe.append("")
-        else:
-            righe.extend((str(valore), ""))
-    return "\n".join(righe).rstrip() + "\n"
 
 
 def costruisci(sorgente: Path, destinazione: Path) -> dict[str, object]:
@@ -146,10 +110,7 @@ def costruisci(sorgente: Path, destinazione: Path) -> dict[str, object]:
             "player_character_id": id_per_nome["Luca"],
         },
     )
-    scenario_dati = json.loads(scenario_json.read_text(encoding="utf-8"))
-    (destinazione / "scenario.md").write_text(
-        _scenario_leggibile(scenario_dati), encoding="utf-8"
-    )
+    shutil.copyfile(scenario_md, destinazione / "scenario.md")
     (destinazione / "source").mkdir()
     shutil.copyfile(profili_path, destinazione / "source" / profili_path.name)
     shutil.copyfile(scenario_json, destinazione / "source" / scenario_json.name)
@@ -167,9 +128,9 @@ def costruisci(sorgente: Path, destinazione: Path) -> dict[str, object]:
         media_manifest.append(
             {
                 "path": relativo,
-                "id": "media_" + hashlib.sha256(
-                    f"haria_local_complete\0{relativo.casefold()}\0{_sha256(sorgente_file)}".encode("utf-8")
-                ).hexdigest(),
+                "id": _id_deterministico(
+                    "media", "haria_local_complete", relativo
+                ),
                 "type": "immagine_personaggio",
                 "title": f"Immagine di {nome_personaggio}",
                 "alt_text": f"Riferimento visivo di {nome_personaggio}",
@@ -184,9 +145,9 @@ def costruisci(sorgente: Path, destinazione: Path) -> dict[str, object]:
         media_manifest.append(
             {
                 "path": relativo,
-                "id": "media_" + hashlib.sha256(
-                    f"haria_local_complete\0{relativo.casefold()}\0{_sha256(percorso_copertina)}".encode("utf-8")
-                ).hexdigest(),
+                "id": _id_deterministico(
+                    "media", "haria_local_complete", relativo
+                ),
                 "type": "copertina",
                 "title": "Copertina di Haria",
                 "alt_text": "Copertina del mondo di Haria",
@@ -194,12 +155,9 @@ def costruisci(sorgente: Path, destinazione: Path) -> dict[str, object]:
         )
 
     for nome, dati in profili.items():
-        personaggio = {
-            "id": id_per_nome[nome],
-            "name": nome,
-            "section_id": dati.get("section_id"),
-            "profile": dati.get("text"),
-        }
+        personaggio = dict(dati)
+        personaggio["id"] = id_per_nome[nome]
+        personaggio["name"] = nome
         immagini_personaggio = sorted(immagini_per_personaggio[nome], key=str.casefold)
         if immagini_personaggio:
             preferita = next(

@@ -36,14 +36,15 @@ local_worlds/haria.zip
 Contiene 9 profili reali disponibili, lo scenario disponibile, 9 immagini
 associate con certezza e una copertina. I byte originali sono stati copiati
 senza conversione, ridimensionamento o ricompressione. Il pacchetto conserva
-anche le fotografie testuali originali sotto `source/` e include
+anche i profili e gli scenari sorgente originali sotto `source/` e include
 `LOCAL_IMPORT_REPORT.json` con inventario e SHA-256.
 
 Non sono stati trovati materiali verificati sufficienti per creare luoghi,
 oggetti, lore, timeline, regole e stile come documenti canonici separati. Tali
 contenuti non sono stati inventati. Sei immagini generiche non sono state
 associate; Luca resta senza immagine certa. Le associazioni e l'inventario
-completo sono documentati in `TASK_006_SOURCE_INVENTORY.md`.
+pubblico sono documentati in `TASK_006_SOURCE_INVENTORY.md`; il rapporto
+completo resta soltanto nel pacchetto locale ignorato da Git.
 
 Il pacchetto locale, sia cartella sia ZIP, supera importazione, apertura,
 consultazione, validazione, export e reimport. Registra 9 personaggi, un
@@ -57,7 +58,7 @@ I byte dei media risiedono soltanto in `source_files`.
 
 ## Verifiche
 
-La suite completa contiene **206 test automatici**. Le fixture Task 006 sono
+La suite completa contiene **212 test automatici**. Le fixture Task 006 sono
 tecniche e temporanee e non includono i contenuti reali di Haria. Sono coperti
 cartella/ZIP, equivalenza, sicurezza, manifest, hash, ID e riferimenti,
 migrazione e rollback, preservazione, export/reimport, validatore, GUI e

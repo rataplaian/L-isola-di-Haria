@@ -188,6 +188,7 @@ def formatta_canone_personaggio(dati: Mapping[str, object]) -> str:
         "tribe": "Tribù",
         "role": "Ruolo",
         "profile": "Profilo",
+        "text": "Profilo",
         "physical_description": "Descrizione fisica",
         "personality": "Personalità",
         "skills": "Competenze",
