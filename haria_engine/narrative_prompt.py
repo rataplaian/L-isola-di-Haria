@@ -1,0 +1,178 @@
+"""Costruzione deterministica dei messaggi del primo turno narrativo."""
+
+from __future__ import annotations
+
+import json
+from dataclasses import dataclass
+
+from .ai_models import MessaggioChat
+
+
+OUTPUT_SCHEMA = {
+    "narrative": "stringa italiana non vuota",
+    "elapsed_minutes": "intero da 0 a 10080",
+    "operations": [
+        {
+            "type": "move | transfer | state_change | event | epistemic",
+            "...": "campi specifici del tipo; nessun campo aggiuntivo",
+        }
+    ],
+    "memories": [
+        {
+            "character_id": "ID del personaggio che apprende",
+            "knowledge_type": (
+                "observed_fact | reported_fact | inference | belief | "
+                "canonical_knowledge"
+            ),
+            "source_type": (
+                "direct_observation | told_by_character | inference | "
+                "imported_background | self_experience"
+            ),
+            "source_entity_id": "ID oppure null",
+            "certainty": "intero da 0 a 100",
+            "content": "testo ricordato",
+            "interpretation": "testo oppure null",
+            "associated_emotion": "testo oppure null",
+            "entities": [
+                {
+                    "entity_id": "ID",
+                    "role": "subject | source | location | related",
+                }
+            ],
+            "source_memory_ids": ["ID memoria giÃ  esistente"],
+        }
+    ],
+}
+
+
+@dataclass(frozen=True, slots=True)
+class ContestoTurnoNarrativo:
+    """Contesto giÃ  selezionato dal servizio applicativo, senza accesso al DB."""
+
+    world_title: str
+    player_name: str
+    user_input: str
+    scenario: str
+    rules: str = ""
+    style: str = ""
+    author_note: str = ""
+    world_state: str = ""
+    characters: tuple[str, ...] = ()
+    relevant_memories: tuple[str, ...] = ()
+    recent_history: tuple[str, ...] = ()
+
+
+def costruisci_messaggi_turno(
+    contesto: ContestoTurnoNarrativo,
+) -> tuple[MessaggioChat, MessaggioChat]:
+    """Restituisce i due messaggi realmente inviabili al provider."""
+
+    _valida_contesto(contesto)
+    sistema = _prompt_sistema(contesto.player_name)
+    utente = _prompt_utente(contesto)
+    return (
+        MessaggioChat("system", sistema),
+        MessaggioChat("user", utente),
+    )
+
+
+def formatta_prompt_visibile(
+    messaggi: tuple[MessaggioChat, ...],
+) -> str:
+    """Rende leggibile esattamente il prompt, senza dati nascosti."""
+
+    sezioni: list[str] = []
+    for messaggio in messaggi:
+        ruolo = messaggio.ruolo.upper()
+        sezioni.append(f"===== {ruolo} =====\n{messaggio.contenuto}")
+    return "\n\n".join(sezioni)
+
+
+def _prompt_sistema(player_name: str) -> str:
+    schema = json.dumps(OUTPUT_SCHEMA, ensure_ascii=False, indent=2)
+    return f"""Sei il motore narrativo locale di un mondo persistente.
+
+SEPARAZIONE DEL CONTROLLO
+- L'utente controlla esclusivamente {player_name}.
+- Non decidere pensieri, consenso, desideri, intenzioni, parole volontarie o azioni volontarie di {player_name}.
+- Non scrivere battute di {player_name} che l'utente non abbia giÃ  fornito.
+- Puoi descrivere ciÃ² che accade attorno a {player_name}, le azioni autonome delle NPC, conseguenze esterne e reazioni fisiche involontarie senza trasformarle in scelte volontarie.
+- Le NPC hanno volontÃ , obiettivi e relazioni indipendenti. Non provano automaticamente amore, fiducia, desiderio, obbedienza o perdono.
+
+REGOLE DI VERITÃ€
+- Il database e il contesto fornito sono la fonte della veritÃ .
+- Non inventare fatti canonici mancanti. Quando un dettaglio non Ã¨ disponibile, resta generico oppure mostra incertezza.
+- Le operazioni, gli eventi e le memorie sono soltanto proposte: non dichiarare che siano giÃ  state salvate.
+- Proponi memorie solo per personaggi che possono avere osservato, vissuto, dedotto o appreso il fatto.
+- Usa soltanto ID presenti nel contesto.
+- Rispetta scenario, regole, stile e nota dell'autore.
+
+FORMATO OBBLIGATORIO
+- Rispondi con un unico oggetto JSON valido.
+- Non usare Markdown, blocchi di codice, prefazioni o testo dopo il JSON.
+- Usa esattamente le quattro chiavi principali mostrate sotto.
+- Non aggiungere campi non previsti.
+- Se non servono operazioni o memorie, usa elenchi vuoti.
+- Il testo narrativo deve essere in italiano salvo diversa indicazione esplicita del mondo.
+
+SCHEMA:
+{schema}
+
+OPERAZIONI:
+- move: type, entity_id, location_id, reason; opzionali actor_id, occurred_at, memory_ids.
+- transfer: type, object_id, holder_id, reason; opzionali actor_id, occurred_at, memory_ids.
+- state_change: type, target_id, reason e almeno uno tra status, condition, accessibility; opzionali actor_id, occurred_at, memory_ids.
+- event: type, event_type, reason; opzionali actor_id, target_id, location_id, occurred_at, memory_ids.
+- epistemic: type, actor_id, reason; opzionali target_id, location_id, occurred_at, memory_ids.
+"""
+
+
+def _prompt_utente(contesto: ContestoTurnoNarrativo) -> str:
+    return "\n\n".join(
+        (
+            _sezione("MONDO", contesto.world_title),
+            _sezione("SCENARIO", contesto.scenario),
+            _sezione("REGOLE", contesto.rules),
+            _sezione("STILE", contesto.style),
+            _sezione("NOTA DELL'AUTORE", contesto.author_note),
+            _sezione("STATO CORRENTE", contesto.world_state),
+            _elenco("PERSONAGGI RILEVANTI", contesto.characters),
+            _elenco("MEMORIE RILEVANTI", contesto.relevant_memories),
+            _elenco("CRONOLOGIA RECENTE", contesto.recent_history),
+            _sezione(
+                f"AZIONE O MESSAGGIO DELL'UTENTE PER {contesto.player_name}",
+                contesto.user_input,
+            ),
+        )
+    )
+
+
+def _sezione(titolo: str, contenuto: str) -> str:
+    testo = contenuto.strip() if contenuto.strip() else "â€”"
+    return f"===== {titolo} =====\n{testo}"
+
+
+def _elenco(titolo: str, valori: tuple[str, ...]) -> str:
+    righe = tuple(valore.strip() for valore in valori if valore.strip())
+    contenuto = "\n".join(f"- {valore}" for valore in righe) if righe else "â€”"
+    return f"===== {titolo} =====\n{contenuto}"
+
+
+def _valida_contesto(contesto: ContestoTurnoNarrativo) -> None:
+    for nome, valore in (
+        ("titolo del mondo", contesto.world_title),
+        ("nome del personaggio utente", contesto.player_name),
+        ("azione dell'utente", contesto.user_input),
+        ("scenario", contesto.scenario),
+    ):
+        if not isinstance(valore, str) or not valore.strip():
+            raise ValueError(f"Il campo {nome} Ã¨ obbligatorio.")
+    for nome, valori in (
+        ("personaggi", contesto.characters),
+        ("memorie", contesto.relevant_memories),
+        ("cronologia", contesto.recent_history),
+    ):
+        if not isinstance(valori, tuple) or any(
+            not isinstance(valore, str) for valore in valori
+        ):
+            raise ValueError(f"Il campo {nome} deve essere una tupla di testi.")
