@@ -238,6 +238,7 @@ def _parse_memoria(valore: object, indice: int) -> MemoriaCandidata:
                 "associated_emotion",
                 "entities",
                 "source_memory_ids",
+                "operation_index",
             }
         ),
     )
@@ -307,6 +308,9 @@ def _parse_memoria(valore: object, indice: int) -> MemoriaCandidata:
         entities=tuple(entities),
         source_memory_ids=_lista_id(
             dati.get("source_memory_ids", []), "memorie sorgente"
+        ),
+        operation_index=_intero_opzionale_non_negativo(
+            dati.get("operation_index"), "indice operazione"
         ),
     )
 
@@ -401,6 +405,16 @@ def _booleano_opzionale(valore: object, descrizione: str) -> bool | None:
             f"Il campo {descrizione} deve essere vero, falso oppure nullo."
         )
     return valore
+
+
+def _intero_opzionale_non_negativo(
+    valore: object, descrizione: str
+) -> int | None:
+    if valore is None:
+        return None
+    return _intero_nell_intervallo(
+        valore, descrizione, minimo=0, massimo=MAX_OPERATIONS - 1
+    )
 
 
 def _intero_nell_intervallo(

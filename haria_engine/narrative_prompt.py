@@ -33,6 +33,7 @@ OUTPUT_SCHEMA = {
             "content": "testo ricordato",
             "interpretation": "testo oppure null",
             "associated_emotion": "testo oppure null",
+            "operation_index": "indice zero-based dell'operazione oppure null",
             "entities": [
                 {
                     "entity_id": "ID",
@@ -60,6 +61,7 @@ class ContestoTurnoNarrativo:
     characters: tuple[str, ...] = ()
     relevant_memories: tuple[str, ...] = ()
     recent_history: tuple[str, ...] = ()
+    narrative_time: str = ""
 
 
 def costruisci_messaggi_turno(
@@ -136,6 +138,7 @@ def _prompt_utente(contesto: ContestoTurnoNarrativo) -> str:
             _sezione("STILE", contesto.style),
             _sezione("NOTA DELL'AUTORE", contesto.author_note),
             _sezione("STATO CORRENTE", contesto.world_state),
+            _sezione("TEMPO NARRATIVO CORRENTE", contesto.narrative_time),
             _elenco("PERSONAGGI RILEVANTI", contesto.characters),
             _elenco("MEMORIE RILEVANTI", contesto.relevant_memories),
             _elenco("CRONOLOGIA RECENTE", contesto.recent_history),
