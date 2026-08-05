@@ -37,9 +37,9 @@ Ogni entità conserva uno stato attuale separato dal profilo canonico.
 ## Eventi
 Gli eventi sono immutabili e descrivono la causa dei cambiamenti.
 
-## Schema SQLite implementato fino al Task 005
+## Schema SQLite implementato fino al Task 006
 
-Lo schema applicativo corrente è la versione 4. Le tabelle dei Task precedenti
+Lo schema applicativo corrente è la versione 5. Le tabelle dei Task precedenti
 restano disponibili senza modifiche distruttive.
 
 ### `world_entities`
@@ -152,7 +152,7 @@ stato, eventi o memorie. La riapertura non duplica la configurazione.
 
 ## Fotografia di validazione del Task 005
 
-Il Task 005 non introduce tabelle né migrazioni: `PRAGMA user_version` resta 4.
+Il Task 005 non introduce tabelle né migrazioni.
 Il validatore costruisce a ogni richiesta una fotografia immutabile e
 transitoria contenente riferimenti strutturati a mondo, entità, eventi e
 memorie. La fotografia non viene salvata e non contiene scenario, contenuto
@@ -162,6 +162,31 @@ Le proposte validate sono valori tipizzati immutabili. Un dry-run applica le
 sole trasformazioni ammesse a una nuova fotografia in memoria; la fotografia
 originale e tutte le tabelle SQLite restano invariate. Un esito non valido non
 produce alcuna proiezione.
+
+## Documenti e media del Task 006
+
+### `canonical_documents`
+
+Indicizza documenti canonici con chiave `(world_id, document_id)`: tipo,
+titolo, percorso sorgente relativo, contenuto UTF-8 leggibile, ordine,
+metadati strutturati e SHA-256. Una chiave esterna composta collega ogni
+documento alla fotografia corrispondente in `source_files`.
+
+### `media_assets`
+
+Indicizza media con chiave `(world_id, media_id)`: percorso sorgente, tipo,
+MIME, SHA-256, titolo, testo alternativo, possibile entità collegata, ordine e
+metadati. Le chiavi esterne composte impediscono riferimenti a sorgenti o
+entità di un altro mondo. I byte non sono duplicati: vengono recuperati da
+`source_files` tramite `(world_id, relative_path)`.
+
+## Migrazione 4 → 5
+
+La migrazione crea le due tabelle e i relativi indici in una sola transazione.
+I mondi già presenti non vengono reinterpretati e le nuove tabelle restano
+vuote per essi. `PRAGMA user_version` diventa 5 soltanto al commit. Un errore
+lascia versione 4 e nessuna tabella Task 006 parziale. Mondi, versioni, eventi,
+stato, memorie e configurazione AI non vengono modificati.
 
 ## Limite temporale delle osservazioni
 

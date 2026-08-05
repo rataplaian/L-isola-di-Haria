@@ -67,3 +67,21 @@ Risultati:
 - una proposta non valida non produce una proiezione;
 - database, schema, eventi, stato, memorie e configurazione AI invariati;
 - nessuna richiesta HTTP o connessione a Ollama.
+
+## Test 8 — Pacchetto completo
+
+Importare la stessa fixture tecnica da cartella e ZIP.
+
+Risultati:
+- identificatori, documenti, entità e media equivalenti;
+- manifest e hash validati prima delle scritture;
+- archivi ostili, link, duplicati e limiti rifiutati in italiano;
+- migrazione 4→5 e importazione atomiche con rollback completo;
+- export e reimport conservano struttura, ID, file sconosciuti ammessi e byte media;
+- `sample_world/` resta importabile;
+- nessuna rete o modifica dei sorgenti;
+- GUI italiana senza JSON o identificatori tecnici.
+
+La suite Task 001–006 contiene **206 test automatici** e usa soltanto database,
+cartelle, ZIP e media tecnici temporanei. I materiali reali locali non sono
+fixture automatiche.

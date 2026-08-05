@@ -11,19 +11,22 @@ personaggi, un indice di riferimenti, un manifest storico e 16 PNG rinominati.
 Non sono disponibili sorgenti complete e verificabili per luoghi, oggetti,
 lore o timeline; tali contenuti non vengono inventati.
 
+Il pacchetto risultante è stato creato in `local_worlds/haria/` con una copia
+ZIP in `local_worlds/haria.zip`; entrambi sono ignorati da Git.
+
 ## Immagini associate con certezza
 
-| File | Personaggio | SHA-256 |
-| --- | --- | --- |
-| `Ahri (Silvia).png` | Silvia detta Ahri | `0cf15f2a534f1f011ed0100b375a4765e96e02ce032e725a68db3974530db87e` |
-| `Akari Mori.png` | Akari Mori | `4b8d2e1d522e0a3a9b7a1e55f5c9e98517120974abd9731dd00b1a2e7c81a03e` |
-| `Elise Moreau.png` | Élise Moreau | `d4d297fdb8ec3222ea0ffe4f3768dd1270c407762b206b2334b13da435ef95ea` |
-| `Katarina Volkov.png` | Katarina Volkov | `4027ae22045226fc5549d3209a1b9ff64951facb744a484912c6320dee05e09a` |
-| `Mara Voss.png` | Mara Voss | `3ddef474f189800b2ed3df31ec0cf7649a90e08aa547b929f6d017981c1b6a26` |
-| `Mara Voss 2.png` | Mara Voss | `0711477ae03d389d12a0ee010a092cf99e5adc08a299d47352dc4bff3ed7a3ab` |
-| `Natsumi Kuroda.png` | Natsumi Kuroda | `37f1a7824f33264221bb22f274e676865bcf4699bc6c736a2c0bd11c125271c4` |
-| `Sofia Alvarez.png` | Sofia Álvarez | `47b8b764bc94b4b1eaee5e397c41cadde16d0a478b267f5f5582ef7cf8abb37e` |
-| `Yumi Takeda.png` | Yumi Takeda | `1d784b2d7c89f9f6a5171585fa572eb48398c8fb943e2e9f28869e55483d251e` |
+| File | Estensione | Dimensione | Personaggio | SHA-256 |
+| --- | --- | ---: | --- | --- |
+| `Ahri (Silvia).png` | `.png` | 2390222 | Silvia detta Ahri | `0cf15f2a534f1f011ed0100b375a4765e96e02ce032e725a68db3974530db87e` |
+| `Akari Mori.png` | `.png` | 2151901 | Akari Mori | `4b8d2e1d522e0a3a9b7a1e55f5c9e98517120974abd9731dd00b1a2e7c81a03e` |
+| `Elise Moreau.png` | `.png` | 2314354 | Élise Moreau | `d4d297fdb8ec3222ea0ffe4f3768dd1270c407762b206b2334b13da435ef95ea` |
+| `Katarina Volkov.png` | `.png` | 2315758 | Katarina Volkov | `4027ae22045226fc5549d3209a1b9ff64951facb744a484912c6320dee05e09a` |
+| `Mara Voss.png` | `.png` | 2360408 | Mara Voss | `3ddef474f189800b2ed3df31ec0cf7649a90e08aa547b929f6d017981c1b6a26` |
+| `Mara Voss 2.png` | `.png` | 2343175 | Mara Voss | `0711477ae03d389d12a0ee010a092cf99e5adc08a299d47352dc4bff3ed7a3ab` |
+| `Natsumi Kuroda.png` | `.png` | 2193503 | Natsumi Kuroda | `37f1a7824f33264221bb22f274e676865bcf4699bc6c736a2c0bd11c125271c4` |
+| `Sofia Alvarez.png` | `.png` | 2293169 | Sofia Álvarez | `47b8b764bc94b4b1eaee5e397c41cadde16d0a478b267f5f5582ef7cf8abb37e` |
+| `Yumi Takeda.png` | `.png` | 2256042 | Yumi Takeda | `1d784b2d7c89f9f6a5171585fa572eb48398c8fb943e2e9f28869e55483d251e` |
 
 Gli ID media sono deterministici rispetto a mondo, percorso e SHA-256. Le due
 immagini di Mara sono media distinti collegati allo stesso personaggio.
@@ -52,7 +55,9 @@ immagini di Mara sono media distinti collegati allo stesso personaggio.
 ## Duplicati o ambiguità
 
 - Mara Voss possiede due immagini distinte e chiaramente nominate; entrambe
-  vengono conservate e collegate, senza scegliere arbitrariamente una primaria.
+  vengono conservate e collegate. Il riferimento principale usa
+  deterministicamente `Mara Voss.png`, mentre `Mara Voss 2.png` resta un
+  secondo media associato.
 - le cinque varianti “protagonista” non vengono collegate a Luca;
 - il ritratto della veranda resta non associato;
 - la copertina è classificata come media del mondo, non come ritratto.
