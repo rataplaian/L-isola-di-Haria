@@ -135,7 +135,7 @@ class TestConfigurazioneESchema4(unittest.TestCase):
             versione = servizio.archivio._connessione.execute(
                 "PRAGMA user_version"
             ).fetchone()[0]
-        self.assertEqual(5, versione)
+            self.assertEqual(6, versione)
         self.assertEqual("ollama", configurazione.provider)
         self.assertEqual(OLLAMA_URL_PREDEFINITO, configurazione.ollama_base_url)
         self.assertEqual("", configurazione.ollama_model)
@@ -172,7 +172,7 @@ class TestConfigurazioneESchema4(unittest.TestCase):
                 "PRAGMA user_version"
             ).fetchone()[0]
 
-        self.assertEqual(5, versione)
+        self.assertEqual(6, versione)
         self.assertEqual(prima, dopo)
 
     def test_migrazione_3_a_4_fallita_esegue_rollback(self) -> None:
@@ -345,6 +345,11 @@ class TestConfigurazioneESchema4(unittest.TestCase):
     def _riduci_a_schema_3(database: Path) -> None:
         connessione = sqlite3.connect(database)
         try:
+            connessione.execute("PRAGMA foreign_keys = OFF")
+            connessione.execute("DROP TABLE narrative_turn_memories")
+            connessione.execute("DROP TABLE narrative_turn_events")
+            connessione.execute("DROP TABLE narrative_turns")
+            connessione.execute("DROP TABLE narrative_sessions")
             connessione.execute("DROP TABLE media_assets")
             connessione.execute("DROP TABLE canonical_documents")
             connessione.execute("DROP TABLE ai_settings")

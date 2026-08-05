@@ -173,7 +173,7 @@ class TestMigrazioneSchema2(unittest.TestCase):
                 "PRAGMA user_version"
             ).fetchone()[0]
 
-        self.assertEqual(5, versione_schema)
+            self.assertEqual(6, versione_schema)
         self.assertEqual("Scenario salvato Task 001", mondo.scenario)
         self.assertEqual([2, 1], [versione.numero for versione in versioni])
         self.assertEqual(8, len(entita))
@@ -236,7 +236,7 @@ class TestMigrazioneSchema2(unittest.TestCase):
                 "PRAGMA user_version"
             ).fetchone()[0]
 
-        self.assertEqual(5, versione)
+            self.assertEqual(6, versione)
         self.assertEqual(8, len(entita))
 
     def test_verifica_cli_mostra_errore_migrazione_in_italiano(self) -> None:

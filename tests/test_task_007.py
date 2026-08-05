@@ -216,7 +216,7 @@ class TestServizioNarrativo(unittest.TestCase):
             self.prepara(), output_narrativo(), datetime.now(timezone.utc)
         )
         self.assertEqual(prima, self.fotografia_database())
-        self.assertEqual(5, prima[0])
+        self.assertEqual(6, prima[0])
 
     def test_contesto_limita_cronologia_a_venti_voci(self) -> None:
         storia = tuple(f"Messaggio {indice}" for indice in range(25))
@@ -262,12 +262,12 @@ class TestIntegrazioneInterfacciaNarrativa(unittest.TestCase):
         time.sleep(0.03)
         self.assertEqual((), coordinatore.raccogli())
 
-    def test_testi_gioca_sono_italiani_e_dichiarano_anteprima(self) -> None:
+    def test_testi_gioca_sono_italiani_e_dichiarano_partita_persistente(self) -> None:
         self.assertEqual("Gioca", UI_TEXT["gioca"])
         self.assertEqual("Invia", UI_TEXT["invia_turno"])
         self.assertEqual("Mostra prompt", UI_TEXT["mostra_prompt"])
         self.assertEqual(
-            "Anteprima narrativa: nessuna modifica viene ancora salvata",
+            "Partita locale persistente",
             UI_TEXT["anteprima_narrativa"],
         )
 
