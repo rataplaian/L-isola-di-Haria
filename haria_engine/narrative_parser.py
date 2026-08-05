@@ -46,7 +46,7 @@ def parse_output_narrativo(raw: str) -> TurnoNarrativoProposto:
     if len(raw) > MAX_OUTPUT_CHARS:
         raise ErroreOutputNarrativo("La risposta narrativa supera il limite consentito.")
     if not raw.strip():
-        raise ErroreOutputNarrativo("La risposta narrativa Ã¨ vuota.")
+        raise ErroreOutputNarrativo("La risposta narrativa è vuota.")
     try:
         dati = json.loads(raw)
     except json.JSONDecodeError as errore:
@@ -72,11 +72,11 @@ def parse_output_narrativo(raw: str) -> TurnoNarrativoProposto:
     memories_raw = _lista(dati["memories"], "memorie")
     if len(operations_raw) > MAX_OPERATIONS:
         raise ErroreOutputNarrativo(
-            f"Il modello ha proposto piÃ¹ di {MAX_OPERATIONS} operazioni."
+            f"Il modello ha proposto più di {MAX_OPERATIONS} operazioni."
         )
     if len(memories_raw) > MAX_MEMORIES:
         raise ErroreOutputNarrativo(
-            f"Il modello ha proposto piÃ¹ di {MAX_MEMORIES} memorie."
+            f"Il modello ha proposto più di {MAX_MEMORIES} memorie."
         )
 
     operations = tuple(
@@ -107,7 +107,7 @@ def _parse_operazione(valore: object, indice: int) -> PropostaValidazione:
             opzionali=frozenset({"actor_id", "occurred_at", "memory_ids"}),
         )
         return PropostaSpostamento(
-            entity_id=_id(dati["entity_id"], "entitÃ  da spostare"),
+            entity_id=_id(dati["entity_id"], "entità da spostare"),
             location_id=_id(dati["location_id"], "luogo di destinazione"),
             actor_id=_id_opzionale(dati.get("actor_id"), "attore"),
             occurred_at=_testo_opzionale(dati.get("occurred_at"), "istante"),
@@ -150,7 +150,7 @@ def _parse_operazione(valore: object, indice: int) -> PropostaValidazione:
         status = _testo_opzionale(dati.get("status"), "stato")
         condition = _testo_opzionale(dati.get("condition"), "condizione")
         accessibility = _booleano_opzionale(
-            dati.get("accessibility"), "accessibilitÃ "
+            dati.get("accessibility"), "accessibilità"
         )
         if status is None and condition is None and accessibility is None:
             raise ErroreOutputNarrativo(
@@ -213,7 +213,7 @@ def _parse_operazione(valore: object, indice: int) -> PropostaValidazione:
         )
 
     raise ErroreOutputNarrativo(
-        f"Il tipo di operazione â€œ{tipo}â€ non Ã¨ supportato."
+        f"Il tipo di operazione “{tipo}” non è supportato."
     )
 
 
@@ -246,41 +246,41 @@ def _parse_memoria(valore: object, indice: int) -> MemoriaCandidata:
     )
     if knowledge_type not in KNOWLEDGE_TYPES:
         raise ErroreOutputNarrativo(
-            f"Il tipo di conoscenza â€œ{knowledge_type}â€ non Ã¨ supportato."
+            f"Il tipo di conoscenza “{knowledge_type}” non è supportato."
         )
     source_type = _testo_obbligatorio(
         dati["source_type"], "tipo di fonte", 80
     )
     if source_type not in SOURCE_TYPES:
         raise ErroreOutputNarrativo(
-            f"Il tipo di fonte â€œ{source_type}â€ non Ã¨ supportato."
+            f"Il tipo di fonte “{source_type}” non è supportato."
         )
-    entities_raw = _lista(dati.get("entities", []), "entitÃ  della memoria")
+    entities_raw = _lista(dati.get("entities", []), "entità della memoria")
     entities: list[AssociazioneMemoriaCandidata] = []
     seen_entities: set[tuple[str, str]] = set()
     for posizione, valore_entita in enumerate(entities_raw):
         entita = _oggetto(
             valore_entita,
-            f"entitÃ  {posizione + 1} della memoria {indice + 1}",
+            f"entità {posizione + 1} della memoria {indice + 1}",
         )
         _richiedi_chiavi_esatte(
             entita,
             frozenset({"entity_id", "role"}),
-            f"entitÃ  {posizione + 1} della memoria {indice + 1}",
+            f"entità {posizione + 1} della memoria {indice + 1}",
         )
         role = _testo_obbligatorio(entita["role"], "ruolo memoria", 40)
         if role not in MEMORY_ROLES:
             raise ErroreOutputNarrativo(
-                f"Il ruolo memoria â€œ{role}â€ non Ã¨ supportato."
+                f"Il ruolo memoria “{role}” non è supportato."
             )
         associazione = AssociazioneMemoriaCandidata(
-            entity_id=_id(entita["entity_id"], "entitÃ  della memoria"),
+            entity_id=_id(entita["entity_id"], "entità della memoria"),
             role=role,
         )
         chiave = (associazione.entity_id, associazione.role)
         if chiave in seen_entities:
             raise ErroreOutputNarrativo(
-                "La stessa associazione Ã¨ duplicata nella memoria."
+                "La stessa associazione è duplicata nella memoria."
             )
         seen_entities.add(chiave)
         entities.append(associazione)
@@ -334,7 +334,7 @@ def _richiedi_chiavi_esatte(
 
 def _oggetto(valore: object, descrizione: str) -> dict[str, object]:
     if not isinstance(valore, dict):
-        raise ErroreOutputNarrativo(f"{descrizione.capitalize()} non Ã¨ un oggetto.")
+        raise ErroreOutputNarrativo(f"{descrizione.capitalize()} non è un oggetto.")
     if any(not isinstance(chiave, str) for chiave in valore):
         raise ErroreOutputNarrativo(
             f"{descrizione.capitalize()} contiene una chiave non testuale."

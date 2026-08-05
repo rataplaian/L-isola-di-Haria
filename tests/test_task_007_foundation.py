@@ -68,7 +68,7 @@ def output_valido() -> dict[str, object]:
                 "source_type": "direct_observation",
                 "source_entity_id": None,
                 "certainty": 95,
-                "content": "Un rumore Ã¨ arrivato dalla foresta.",
+                "content": "Un rumore è arrivato dalla foresta.",
                 "interpretation": "Qualcuno potrebbe essere vicino.",
                 "associated_emotion": "allerta",
                 "entities": [
@@ -127,7 +127,7 @@ class TestParserNarrativo(unittest.TestCase):
         dati["operations"] = [
             {"type": "teleport", "reason": "Operazione non supportata."}
         ]
-        with self.assertRaisesRegex(ErroreOutputNarrativo, "non Ã¨ supportato"):
+        with self.assertRaisesRegex(ErroreOutputNarrativo, "non è supportato"):
             parse_output_narrativo(json.dumps(dati))
 
     def test_cambio_stato_deve_modificare_un_campo(self) -> None:
@@ -159,7 +159,7 @@ class TestParserNarrativo(unittest.TestCase):
             assert isinstance(dati["memories"], list)
             dati["memories"][0][campo] = valore
             with self.subTest(campo=campo), self.assertRaisesRegex(
-                ErroreOutputNarrativo, "non Ã¨ supportato"
+                ErroreOutputNarrativo, "non è supportato"
             ):
                 parse_output_narrativo(json.dumps(dati))
 
@@ -180,12 +180,12 @@ class TestPromptNarrativo(unittest.TestCase):
             world_title="L'isola di Haria",
             player_name="Luca",
             user_input="Guardo Mara senza parlare.",
-            scenario="Una comunitÃ  sopravvive su un'isola.",
+            scenario="Una comunità sopravvive su un'isola.",
             rules="Le NPC sono autonome.",
             style="Prima persona, ritmo quotidiano.",
             author_note="Non accelerare le relazioni.",
-            world_state="Mara Ã¨ alla baia. Luca Ã¨ vicino alla riva.",
-            characters=("mara â€” Mara Voss â€” baia",),
+            world_state="Mara è alla baia. Luca è vicino alla riva.",
+            characters=("mara — Mara Voss — baia",),
             relevant_memories=("mara ricorda l'arrivo di Luca",),
             recent_history=("Mara ha chiesto il nome di Luca.",),
         )
@@ -196,7 +196,7 @@ class TestPromptNarrativo(unittest.TestCase):
 
         self.assertIn("Non decidere pensieri, consenso", sistema)
         self.assertIn("Non scrivere battute di Luca", sistema)
-        self.assertIn("Le NPC hanno volontÃ ", sistema)
+        self.assertIn("Le NPC hanno volontà", sistema)
         self.assertIn("un unico oggetto JSON", sistema)
 
     def test_prompt_mostra_esattamente_messaggi_e_input(self) -> None:
@@ -206,7 +206,7 @@ class TestPromptNarrativo(unittest.TestCase):
         self.assertIn("===== SYSTEM =====", visibile)
         self.assertIn("===== USER =====", visibile)
         self.assertIn("Guardo Mara senza parlare.", visibile)
-        self.assertIn("Mara Ã¨ alla baia.", visibile)
+        self.assertIn("Mara è alla baia.", visibile)
 
     def test_prompt_e_deterministico(self) -> None:
         prima = costruisci_messaggi_turno(self.contesto())

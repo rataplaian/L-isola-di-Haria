@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from .ai_models import (
     ConfigurazioneAI,
+    MessaggioChat,
     ModelloLocale,
     RispostaTestuale,
     RisultatoConnessione,
@@ -33,6 +34,13 @@ class ServizioAI:
         self, configurazione: ConfigurazioneAI, testo: str
     ) -> RispostaTestuale:
         return self._provider(configurazione).genera_testo_di_prova(testo)
+
+    def genera_turno_narrativo(
+        self,
+        configurazione: ConfigurazioneAI,
+        messaggi: tuple[MessaggioChat, ...],
+    ) -> RispostaTestuale:
+        return self._provider(configurazione).genera_turno_narrativo(messaggi)
 
     def _provider(self, configurazione: ConfigurazioneAI) -> ProviderLLM:
         valida = valida_configurazione_ai(

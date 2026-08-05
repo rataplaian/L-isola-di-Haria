@@ -9,7 +9,7 @@ from .validation_models import PropostaValidazione
 
 @dataclass(frozen=True, slots=True)
 class AssociazioneMemoriaCandidata:
-    """EntitÃ  citata da una memoria candidata e relativo ruolo."""
+    """Entità citata da una memoria candidata e relativo ruolo."""
 
     entity_id: str
     role: str

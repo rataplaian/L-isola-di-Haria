@@ -41,6 +41,10 @@ class ProviderLLM(Protocol):
 
     def genera_testo_di_prova(self, testo: str) -> RispostaTestuale: ...
 
+    def genera_turno_narrativo(
+        self, messaggi: tuple[MessaggioChat, ...]
+    ) -> RispostaTestuale: ...
+
 
 class OllamaProvider:
     def __init__(
@@ -105,8 +109,22 @@ class OllamaProvider:
             MessaggioChat("system", PROMPT_SISTEMA_PROVA),
             MessaggioChat("user", testo_utente),
         )
+        return self._genera_da_messaggi(messaggi)
+
+    def genera_turno_narrativo(
+        self, messaggi: tuple[MessaggioChat, ...]
+    ) -> RispostaTestuale:
+        if not self.configurazione.ollama_model:
+            raise ErroreModelloNonDisponibile(
+                "Seleziona un modello Ollama prima di iniziare il turno narrativo."
+            )
+        return self._genera_da_messaggi(messaggi)
+
+    def _genera_da_messaggi(
+        self, messaggi: tuple[MessaggioChat, ...]
+    ) -> RispostaTestuale:
         payload = {
-            "model": modello,
+            "model": self.configurazione.ollama_model,
             "stream": False,
             "messages": [
                 {"role": messaggio.ruolo, "content": messaggio.contenuto}

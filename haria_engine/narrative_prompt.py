@@ -39,7 +39,7 @@ OUTPUT_SCHEMA = {
                     "role": "subject | source | location | related",
                 }
             ],
-            "source_memory_ids": ["ID memoria giÃ  esistente"],
+            "source_memory_ids": ["ID memoria già esistente"],
         }
     ],
 }
@@ -47,7 +47,7 @@ OUTPUT_SCHEMA = {
 
 @dataclass(frozen=True, slots=True)
 class ContestoTurnoNarrativo:
-    """Contesto giÃ  selezionato dal servizio applicativo, senza accesso al DB."""
+    """Contesto già selezionato dal servizio applicativo, senza accesso al DB."""
 
     world_title: str
     player_name: str
@@ -95,14 +95,14 @@ def _prompt_sistema(player_name: str) -> str:
 SEPARAZIONE DEL CONTROLLO
 - L'utente controlla esclusivamente {player_name}.
 - Non decidere pensieri, consenso, desideri, intenzioni, parole volontarie o azioni volontarie di {player_name}.
-- Non scrivere battute di {player_name} che l'utente non abbia giÃ  fornito.
-- Puoi descrivere ciÃ² che accade attorno a {player_name}, le azioni autonome delle NPC, conseguenze esterne e reazioni fisiche involontarie senza trasformarle in scelte volontarie.
-- Le NPC hanno volontÃ , obiettivi e relazioni indipendenti. Non provano automaticamente amore, fiducia, desiderio, obbedienza o perdono.
+- Non scrivere battute di {player_name} che l'utente non abbia già fornito.
+- Puoi descrivere ciò che accade attorno a {player_name}, le azioni autonome delle NPC, conseguenze esterne e reazioni fisiche involontarie senza trasformarle in scelte volontarie.
+- Le NPC hanno volontà, obiettivi e relazioni indipendenti. Non provano automaticamente amore, fiducia, desiderio, obbedienza o perdono.
 
-REGOLE DI VERITÃ€
-- Il database e il contesto fornito sono la fonte della veritÃ .
-- Non inventare fatti canonici mancanti. Quando un dettaglio non Ã¨ disponibile, resta generico oppure mostra incertezza.
-- Le operazioni, gli eventi e le memorie sono soltanto proposte: non dichiarare che siano giÃ  state salvate.
+REGOLE DI VERITÀ
+- Il database e il contesto fornito sono la fonte della verità.
+- Non inventare fatti canonici mancanti. Quando un dettaglio non è disponibile, resta generico oppure mostra incertezza.
+- Le operazioni, gli eventi e le memorie sono soltanto proposte: non dichiarare che siano già state salvate.
 - Proponi memorie solo per personaggi che possono avere osservato, vissuto, dedotto o appreso il fatto.
 - Usa soltanto ID presenti nel contesto.
 - Rispetta scenario, regole, stile e nota dell'autore.
@@ -148,13 +148,13 @@ def _prompt_utente(contesto: ContestoTurnoNarrativo) -> str:
 
 
 def _sezione(titolo: str, contenuto: str) -> str:
-    testo = contenuto.strip() if contenuto.strip() else "â€”"
+    testo = contenuto.strip() if contenuto.strip() else "—"
     return f"===== {titolo} =====\n{testo}"
 
 
 def _elenco(titolo: str, valori: tuple[str, ...]) -> str:
     righe = tuple(valore.strip() for valore in valori if valore.strip())
-    contenuto = "\n".join(f"- {valore}" for valore in righe) if righe else "â€”"
+    contenuto = "\n".join(f"- {valore}" for valore in righe) if righe else "—"
     return f"===== {titolo} =====\n{contenuto}"
 
 
@@ -166,7 +166,7 @@ def _valida_contesto(contesto: ContestoTurnoNarrativo) -> None:
         ("scenario", contesto.scenario),
     ):
         if not isinstance(valore, str) or not valore.strip():
-            raise ValueError(f"Il campo {nome} Ã¨ obbligatorio.")
+            raise ValueError(f"Il campo {nome} è obbligatorio.")
     for nome, valori in (
         ("personaggi", contesto.characters),
         ("memorie", contesto.relevant_memories),
