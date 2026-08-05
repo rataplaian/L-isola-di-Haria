@@ -67,6 +67,14 @@ class ServizioMondi:
     def importa_pacchetto_validato(
         self, pacchetto: PacchettoMondo, percorso_sorgente: str
     ) -> Mondo:
+        riferimenti_mondo = {
+            *(voce.world_id for voce in pacchetto.documents),
+            *(voce.world_id for voce in pacchetto.media),
+        }
+        if riferimenti_mondo - {pacchetto.world_id}:
+            raise ErroreImportazione(
+                "Il pacchetto contiene riferimenti appartenenti a un altro mondo."
+            )
         return self.archivio.importa_mondo(
             mondo_id=pacchetto.world_id,
             titolo=pacchetto.title,

@@ -695,6 +695,38 @@ class ArchivioSQLite:
         documenti: Iterable[DocumentoCanonico] = (),
         media: Iterable[MediaCanonico] = (),
     ) -> Mondo:
+        try:
+            return self._importa_mondo_transazionale(
+                mondo_id=mondo_id,
+                titolo=titolo,
+                lingua=lingua,
+                percorso_sorgente=percorso_sorgente,
+                scenario=scenario,
+                impostazioni_narrative=impostazioni_narrative,
+                file_sorgente=file_sorgente,
+                entita=entita,
+                documenti=documenti,
+                media=media,
+            )
+        except sqlite3.Error as errore:
+            raise ErroreImportazione(
+                "L'importazione non è riuscita; nessun dato parziale è stato salvato."
+            ) from errore
+
+    def _importa_mondo_transazionale(
+        self,
+        *,
+        mondo_id: str,
+        titolo: str,
+        lingua: str,
+        percorso_sorgente: str,
+        scenario: str,
+        impostazioni_narrative: Mapping[str, str],
+        file_sorgente: Iterable[FileSorgente],
+        entita: Iterable[EntitaImportata],
+        documenti: Iterable[DocumentoCanonico] = (),
+        media: Iterable[MediaCanonico] = (),
+    ) -> Mondo:
         elenco_file_sorgente = list(file_sorgente)
         elenco_entita = list(entita)
         elenco_documenti = list(documenti)
@@ -759,7 +791,7 @@ class ArchivioSQLite:
                         voce.world_id, voce.document_id, voce.document_type,
                         voce.title, voce.relative_path, voce.content,
                         voce.sort_order,
-                        json.dumps(voce.metadata, ensure_ascii=False, sort_keys=True),
+                        json.dumps(dict(voce.metadata), ensure_ascii=False, sort_keys=True),
                         voce.sha256,
                     )
                     for voce in elenco_documenti
@@ -777,7 +809,7 @@ class ArchivioSQLite:
                         voce.world_id, voce.media_id, voce.relative_path,
                         voce.media_type, voce.mime_type, voce.sha256, voce.title,
                         voce.alt_text, voce.entity_id, voce.sort_order,
-                        json.dumps(voce.metadata, ensure_ascii=False, sort_keys=True),
+                        json.dumps(dict(voce.metadata), ensure_ascii=False, sort_keys=True),
                     )
                     for voce in elenco_media
                 ),
