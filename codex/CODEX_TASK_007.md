@@ -1,16 +1,16 @@
-# Haria Engine â€” Task 007: prima alpha narrativa giocabile
+# Haria Engine — Task 007: prima alpha narrativa giocabile
 
-## Punto di partenza giÃ  preparato
+## Punto di partenza già preparato
 
 Questo task deve partire da `main` contenente il merge del Task 006:
 
 `26e555e7679ec19a246926e8a2493e5068e202b2`
 
-Il branch richiesto Ã¨:
+Il branch richiesto è:
 
 `feature/task-007-narrative-alpha`
 
-La fondazione fornita aggiunge giÃ :
+La fondazione fornita aggiunge già:
 
 - `haria_engine/narrative_models.py`;
 - `haria_engine/narrative_parser.py`;
@@ -19,7 +19,7 @@ La fondazione fornita aggiunge giÃ :
 - questo documento.
 
 La fondazione contiene modelli immutabili, parser JSON rigoroso, prompt deterministico
-e 12 test puri giÃ  verificati. Non riscriverla e non cambiarne il contratto salvo
+e 12 test puri già verificati. Non riscriverla e non cambiarne il contratto salvo
 errore concreto dimostrato da un test.
 
 ## Obiettivo del task
@@ -31,21 +31,21 @@ Creare la prima alpha realmente provabile di Haria:
 3. scrive un'azione o un messaggio per il proprio personaggio;
 4. il programma costruisce e mostra il prompt effettivo;
 5. Ollama restituisce l'output JSON strutturato;
-6. il parser giÃ  fornito lo converte in modelli tipizzati;
+6. il parser già fornito lo converte in modelli tipizzati;
 7. le operazioni proposte vengono validate in dry-run;
-8. se tutto Ã¨ valido, la narrazione appare nella conversazione.
+8. se tutto è valido, la narrazione appare nella conversazione.
 
-Questa alpha Ã¨ intenzionalmente **solo anteprima**: non applica ancora operazioni,
+Questa alpha è intenzionalmente **solo anteprima**: non applica ancora operazioni,
 tempo o memorie al database. La conversazione resta disponibile durante la sessione
 dell'app, ma non viene ancora salvata dopo la chiusura.
 
 ## Principio di costo e ambito
 
-Applica la modifica piÃ¹ piccola possibile. Riusa provider, coordinatore asincrono,
+Applica la modifica più piccola possibile. Riusa provider, coordinatore asincrono,
 servizi e widget esistenti.
 
 Non svolgere audit generici, refactoring estesi, redesign della GUI o lavoro
-preparatorio per funzionalitÃ  future.
+preparatorio per funzionalità future.
 
 ## 1. Provider Ollama
 
@@ -58,14 +58,14 @@ Requisiti:
 
 - usa `POST /api/chat`;
 - `stream` deve essere `false`;
-- usa il modello giÃ  salvato nella configurazione;
+- usa il modello già salvato nella configurazione;
 - inoltra esattamente ruolo e contenuto dei messaggi ricevuti;
 - non eseguire `GET /api/tags` prima di ogni turno;
-- riusa la validazione giÃ  esistente della risposta assistant;
+- riusa la validazione già esistente della risposta assistant;
 - nessun accesso a SQLite o Tkinter dal provider;
 - nessuna rete nei test.
 
-Non rimuovere nÃ© cambiare il comportamento della prova testuale giÃ  esistente.
+Non rimuovere né cambiare il comportamento della prova testuale già esistente.
 
 ## 2. Contesto del turno
 
@@ -79,17 +79,17 @@ Il contesto passato a `ContestoTurnoNarrativo` deve includere:
 - input corrente dell'utente;
 - scenario corrente;
 - `rules.md`, `style.md` e nota autore quando presenti;
-- stato corrente delle entitÃ  in righe deterministiche e leggibili;
+- stato corrente delle entità in righe deterministiche e leggibili;
 - personaggi con ID, nome, profilo canonico e stato corrente;
-- memorie correnti utili giÃ  disponibili nell'archivio;
+- memorie correnti utili già disponibili nell'archivio;
 - cronologia narrativa recente della sessione.
 
-Usa soltanto dati giÃ  presenti. Non inventare lore o stato.
+Usa soltanto dati già presenti. Non inventare lore o stato.
 
 ### Personaggio giocante
 
 Leggi `player_character_id` dal `world.json` archiviato e risolvilo contro le
-entitÃ  del mondo. Se il campo manca o non identifica un personaggio, mostra un
+entità del mondo. Se il campo manca o non identifica un personaggio, mostra un
 errore italiano chiaro e non inviare la richiesta.
 
 Per Haria deve risolversi in Luca.
@@ -105,7 +105,7 @@ Per evitare prompt incontrollati:
 - ordine deterministico per ID/nome/tempo.
 
 Se una sezione non esiste, passa stringa vuota o tupla vuota come previsto dai
-modelli giÃ  forniti.
+modelli già forniti.
 
 ## 3. Validazione dry-run
 
@@ -121,7 +121,7 @@ Dopo `parse_output_narrativo`:
 - non modificare lo scenario;
 - non avanzare alcun orologio persistente.
 
-Un output con `operations: []` Ã¨ valido e deve essere mostrato normalmente.
+Un output con `operations: []` è valido e deve essere mostrato normalmente.
 
 ## 4. Scheda Gioca
 
@@ -134,7 +134,7 @@ Elementi minimi:
 - pulsante **Invia**;
 - pulsante **Mostra prompt**;
 - indicazione visibile: `Anteprima narrativa: nessuna modifica viene ancora salvata`;
-- stato di attivitÃ  durante la richiesta;
+- stato di attività durante la richiesta;
 - errori in italiano.
 
 Comportamento:
@@ -162,7 +162,7 @@ Non aggiungere tabelle SQLite per:
 - orologio narrativo;
 - proposte LLM.
 
-Non applicare operazioni o memorie. Questo sarÃ  il task successivo, dopo la prova
+Non applicare operazioni o memorie. Questo sarà il task successivo, dopo la prova
 manuale dell'alpha.
 
 Lo schema deve restare **5**.
@@ -175,7 +175,7 @@ Aggiungi soltanto test mirati per:
 
 1. payload `/api/chat` con messaggi esatti e `stream: false`;
 2. nessuna chiamata preventiva a `/api/tags`;
-3. risposta assistant valida e principali errori giÃ  supportati;
+3. risposta assistant valida e principali errori già supportati;
 4. costruzione del contesto dal mondo senza SQL nella GUI;
 5. risoluzione del personaggio giocante;
 6. prompt visibile uguale al prompt inviato;
@@ -214,7 +214,7 @@ Aggiorna soltanto:
 - `docs/TEST_PLAN.md`;
 - nuovo `docs/TASK_007_STATUS.md`.
 
-Documenta chiaramente che Ã¨ un'alpha preview-only e che nulla viene persistito.
+Documenta chiaramente che è un'alpha preview-only e che nulla viene persistito.
 
 ## 9. Git
 
@@ -248,7 +248,7 @@ Al termine:
 - ricerca semantica;
 - streaming token;
 - retry automatici dell'LLM;
-- piÃ¹ provider;
+- più provider;
 - immagini nella chat;
 - redesign;
 - voce;

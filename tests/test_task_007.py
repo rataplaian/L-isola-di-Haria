@@ -7,9 +7,10 @@ import time
 import unittest
 from datetime import datetime, timezone
 from pathlib import Path
+from unittest import mock
 
 from haria_engine.ai_models import ConfigurazioneAI, MessaggioChat
-from haria_engine.app import UI_TEXT
+from haria_engine.app import UI_TEXT, ApplicazioneHaria
 from haria_engine.async_coordinator import CoordinatoreAsincrono
 from haria_engine.errors import ErroreRispostaAssistant, ErroreTurnoNarrativo
 from haria_engine.http_transport import RispostaHTTP
@@ -226,6 +227,27 @@ class TestServizioNarrativo(unittest.TestCase):
 
 
 class TestIntegrazioneInterfacciaNarrativa(unittest.TestCase):
+    def test_turno_in_corso_mostra_il_prompt_inviato_non_input_modificato(self) -> None:
+        applicazione = object.__new__(ApplicazioneHaria)
+        applicazione._turno_corrente = object()
+        applicazione._prompt_narrativo_corrente = "PROMPT REALMENTE INVIATO"
+        applicazione.input_narrativo = mock.Mock()
+        applicazione.input_narrativo.get.return_value = "Azione modificata dopo l'invio"
+        applicazione._prepara_turno_narrativo = mock.Mock(
+            side_effect=AssertionError("Il prompt non deve essere rigenerato")
+        )
+        applicazione.radice = object()
+        finestra = mock.Mock()
+        testo = mock.Mock()
+
+        with mock.patch("haria_engine.app.tk.Toplevel", return_value=finestra), mock.patch(
+            "haria_engine.app.tk.Text", return_value=testo
+        ):
+            applicazione._mostra_prompt_narrativo()
+
+        applicazione._prepara_turno_narrativo.assert_not_called()
+        testo.insert.assert_called_once_with("1.0", "PROMPT REALMENTE INVIATO")
+
     def test_coordinatore_ignora_risposta_tardiva_dopo_chiusura(self) -> None:
         coordinatore = CoordinatoreAsincrono()
         via = threading.Event()

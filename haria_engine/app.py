@@ -675,7 +675,9 @@ class ApplicazioneHaria:
 
     def _mostra_prompt_narrativo(self) -> None:
         try:
-            if self.input_narrativo.get("1.0", tk.END).strip():
+            if self._turno_corrente is not None and self._prompt_narrativo_corrente:
+                prompt = self._prompt_narrativo_corrente
+            elif self.input_narrativo.get("1.0", tk.END).strip():
                 prompt = self._prepara_turno_narrativo().prompt_visibile
             elif self._prompt_narrativo_corrente:
                 prompt = self._prompt_narrativo_corrente
