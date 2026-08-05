@@ -101,6 +101,10 @@ class ErroreCorpoHTTP(ErroreProviderAI):
     """Il corpo della risposta supera il limite applicativo."""
 
 
+class ErroreTurnoNarrativo(ErroreHaria):
+    """Il turno narrativo non può essere preparato o mostrato in anteprima."""
+
+
 class ErroreValidazione(ErroreHaria):
     """La fotografia o la richiesta di validazione non può essere elaborata."""
 

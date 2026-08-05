@@ -15,6 +15,7 @@ from .http_transport import TrasportoHTTP
 from .llm_service import ServizioAI
 from .errors import ErroreEsportazione, ErroreImportazione
 from .memories import ServizioMemorie
+from .narrative_service import ServizioNarrativo
 from .models import FileSorgente, Mondo, RisultatoEsportazione, VersioneMondo
 from .package_models import DocumentoCanonico, MediaCanonico, PacchettoMondo
 from .storage import ArchivioSQLite
@@ -44,6 +45,7 @@ class ServizioMondi:
         self.stato_mondo = ServizioStatoMondo(self.archivio)
         self.memorie = ServizioMemorie(self.archivio)
         self.validazione = ServizioValidazione(self.archivio)
+        self.narrativa = ServizioNarrativo(self.archivio, self.validazione)
         self.ai = ServizioAI(trasporto_ai)
 
     def importa_da_cartella(self, cartella_sorgente: str | Path) -> Mondo:

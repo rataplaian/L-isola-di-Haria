@@ -82,6 +82,19 @@ Risultati:
 - nessuna rete o modifica dei sorgenti;
 - GUI italiana senza JSON o identificatori tecnici.
 
-La suite Task 001–006 contiene **212 test automatici** e usa soltanto database,
+## Test 9 - Anteprima narrativa
+
+Preparare un turno su un pacchetto tecnico e simulare la risposta Ollama.
+
+Risultati:
+- payload `/api/chat` esatto con `stream: false` e nessuna chiamata `/api/tags`;
+- prompt mostrato identico ai messaggi inviati;
+- `player_character_id` risolto dalla fotografia archiviata;
+- operazioni valide simulate e operazioni incoerenti rifiutate;
+- schema 5, versioni, eventi, stato e memorie invariati;
+- risposta tardiva ignorata dopo la chiusura;
+- nessuna rete reale durante i test.
+
+La suite Task 001–007 contiene **237 test automatici** e usa soltanto database,
 cartelle, ZIP e media tecnici temporanei. I materiali reali locali non sono
 fixture automatiche.

@@ -44,6 +44,19 @@ Una correzione aggiunge una nuova memoria e non riscrive quella storica.
 ### 7. Motore narrativo
 Prepara il contesto e interroga l'LLM locale.
 
+Nel Task 007, `haria_engine/narrative_service.py` risolve il personaggio
+giocante dal `world.json` archiviato, raccoglie scenario, documenti, stato,
+profili, memorie correnti e gli ultimi venti messaggi e costruisce i modelli
+del prompt senza SQL nella GUI. `narrative_prompt.py` produce esattamente i due
+messaggi mostrabili e inviabili; `narrative_parser.py` converte la risposta JSON
+in proposte immutabili.
+
+La GUI prepara il contesto nel thread principale, affida al worker soltanto
+`/api/chat` e valida la risposta nel thread principale. Il dry-run usa
+`ServizioValidazione.valida_sequenza`; un errore impedisce di mostrare il testo
+come turno riuscito. Anche in caso di successo non viene invocata alcuna API di
+scrittura.
+
 ### 8. Motore di simulazione
 Fa avanzare processi fuori scena.
 
@@ -73,7 +86,9 @@ SQLite e Tkinter. `haria_engine/async_coordinator.py` esegue una sola richiesta
 per volta su worker daemon e consegna gli esiti al thread principale tramite
 coda.
 
-La GUI crea una fotografia validata dei campi visibili. Il worker riceve
+La GUI crea una fotografia validata dei campi visibili. Per il turno narrativo
+il worker riceve soltanto configurazione e messaggi immutabili e non esegue
+`/api/tags` prima di `/api/chat`. Il worker riceve
 soltanto tale fotografia e il servizio HTTP: connessioni SQLite, widget,
 variabili Tkinter e oggetti narrativi restano nel thread principale. Il polling
 con `after` avviene esclusivamente nel thread Tkinter; chiusura e risultati
@@ -95,7 +110,7 @@ tardivi sono gestiti senza aggiornare widget distrutti.
 La narrazione non è la fonte della verità.
 Il database è la fonte della verità.
 
-## Confini implementati fino al Task 006
+## Confini implementati fino al Task 007
 
 - Il canone originale resta immutabile in `world_entities.canonical_data` e
   nelle fotografie sorgente.
@@ -115,9 +130,9 @@ Il database è la fonte della verità.
 - La configurazione AI è globale per file SQLite, separata dai mondi e dalle
   versioni narrative. Il provider contatta soltanto un URL di loopback
   validato e non può leggere o modificare dati narrativi.
-- Il provider Ollama supporta soltanto verifica, elenco modelli e prova
-  testuale non streaming. Simulazione e generazione narrativa non sono
-  implementate.
+- Il provider Ollama supporta verifica, elenco modelli, prova testuale e una
+  richiesta narrativa non streaming. La generazione narrativa non applica
+  ancora alcun cambiamento persistente.
 - Il validatore legge canone, stato, eventi e memorie attraverso il servizio
   applicativo, produce problemi ordinati e può simulare proposte soltanto in
   memoria.
@@ -130,6 +145,9 @@ Il database è la fonte della verità.
   hash, riferimenti o percorsi non sono coerenti.
 - Le schede Personaggi, Lore, Regole e stile e Media leggono modelli tipizzati,
   non mostrano JSON o ID e usano un fallback italiano per anteprime non native.
+- La scheda Gioca mostra soltanto input utente e prosa validata. Il prompt
+  effettivo è ispezionabile separatamente; la cronologia è limitata a venti
+  messaggi e vive soltanto in memoria.
 
 La GUI legge modelli tipizzati e non accede direttamente a SQL o dati tecnici.
 La vista delle memorie usa query aggregate per fonti ed entità collegate.

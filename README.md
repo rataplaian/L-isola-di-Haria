@@ -103,6 +103,19 @@ su percorsi, link, duplicati e dimensioni. La GUI aggiunge le schede italiane
 sono mostrati. Le importazioni più costose vengono lette e validate da un
 worker daemon, mentre SQLite e Tkinter restano nel thread principale.
 
+## Task 007 - Anteprima del turno narrativo
+
+La scheda **Gioca** costruisce un contesto leggibile dal mondo corrente, mostra
+il prompt effettivo e invia a Ollama una richiesta strutturata non streaming.
+La risposta viene convertita in modelli immutabili e le operazioni proposte
+sono sottoposte al validatore deterministico.
+
+Questa prima versione è deliberatamente una sola anteprima: mostra il testo
+narrativo soltanto quando il dry-run è valido, ma non applica operazioni, non
+crea eventi o memorie, non fa avanzare il tempo e non salva la conversazione.
+Le letture SQLite e gli aggiornamenti Tkinter restano nel thread principale;
+il worker daemon esegue soltanto la richiesta HTTP locale.
+
 ## Requisiti
 
 - Python 3.11 o successivo;
@@ -164,6 +177,9 @@ py -3 -m haria_engine --database C:\percorso\haria.sqlite3
    un audit deterministico in sola lettura del mondo corrente.
 10. Usare **Personaggi**, **Lore**, **Regole e stile** e **Media** per consultare
     il pacchetto completo senza vedere dati tecnici.
+11. Aprire **Gioca**, scrivere un'azione, usare **Mostra prompt** per ispezionare
+    il contesto effettivo e selezionare **Invia** per generare un'anteprima con
+    il modello Ollama configurato.
 
 ## Test e verifica di avvio
 
@@ -181,7 +197,7 @@ python3 -m unittest discover -s tests -v
 python3 -m haria_engine --check
 ```
 
-La suite corrente contiene **212 test automatici** per Task 001–006. I test
+La suite corrente contiene **237 test automatici** per Task 001–007. I test
 Ollama usano trasporti simulati e non
 effettuano richieste verso servizi reali; i test del validatore verificano
 anche che database e configurazione AI rimangano invariati.
@@ -198,4 +214,5 @@ Le motivazioni dello stack e i confini architetturali sono descritti in
 `docs/TECHNICAL_DECISIONS.md`. Gli stati puntuali degli incarichi sono in
 `docs/TASK_001_STATUS.md`, `docs/TASK_002_STATUS.md`,
 `docs/TASK_003_STATUS.md`, `docs/TASK_004_STATUS.md`,
-`docs/TASK_005_STATUS.md` e `docs/TASK_006_STATUS.md`.
+`docs/TASK_005_STATUS.md`, `docs/TASK_006_STATUS.md` e
+`docs/TASK_007_STATUS.md`.
