@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import tkinter as tk
 from collections.abc import Callable, Mapping
+from datetime import datetime, timezone
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
@@ -20,6 +21,7 @@ from .editor_state import SceltaModifiche, StatoEditor
 from .errors import ErroreConfigurazioneAI, ErroreHaria
 from .memories import MemoriaPersonaggio
 from .models import Mondo
+from .narrative_service import TurnoNarrativoPreparato
 from .package_models import DocumentoCanonico, MediaCanonico, PacchettoMondo
 from .paths import database_predefinito
 from .service import ServizioMondi
@@ -144,6 +146,16 @@ UI_TEXT = {
     "nessun_media": "Nessun media disponibile.",
     "anteprima_non_disponibile": "Anteprima non disponibile per questo formato.",
     "media_non_selezionato": "Seleziona un media per visualizzarne i dettagli.",
+    "gioca": "Gioca",
+    "azione_giocatore": "La tua azione",
+    "invia_turno": "Invia",
+    "mostra_prompt": "Mostra prompt",
+    "anteprima_narrativa": "Anteprima narrativa: nessuna modifica viene ancora salvata",
+    "nessun_mondo_gioco": "Importa o seleziona un mondo prima di giocare.",
+    "nessun_modello_gioco": "Seleziona e salva un modello Ollama nelle Impostazioni AI.",
+    "turno_in_corso": "Generazione dell'anteprima narrativa in corso...",
+    "turno_completato": "Anteprima narrativa completata senza modificare il mondo.",
+    "prompt_turno": "Prompt del turno narrativo",
 }
 
 
@@ -282,6 +294,9 @@ class ApplicazioneHaria:
         self._controllo_ai_after: str | None = None
         self._chiusura_in_corso = False
         self._pulsanti_rete_ai: list[ttk.Button] = []
+        self._cronologia_narrativa: list[str] = []
+        self._turno_corrente: TurnoNarrativoPreparato | None = None
+        self._prompt_narrativo_corrente = ""
 
         self.radice.title(UI_TEXT["titolo_finestra"])
         self.radice.geometry("1080x720")
@@ -328,6 +343,8 @@ class ApplicazioneHaria:
 
         self.schede = ttk.Notebook(contenitore)
         self.schede.pack(fill=tk.BOTH, expand=True)
+
+        self._costruisci_scheda_gioca()
 
         scheda_scenario = ttk.Frame(self.schede, padding=10)
         self.schede.add(scheda_scenario, text=UI_TEXT["scenario"])
@@ -408,6 +425,50 @@ class ApplicazioneHaria:
             contenitore, text=UI_TEXT["istruzione_importa"], anchor=tk.W
         )
         self.etichetta_stato.pack(fill=tk.X, pady=(10, 0))
+
+    def _costruisci_scheda_gioca(self) -> None:
+        scheda = ttk.Frame(self.schede, padding=10)
+        self.schede.add(scheda, text=UI_TEXT["gioca"])
+        scheda.columnconfigure(0, weight=1)
+        scheda.rowconfigure(1, weight=1)
+
+        ttk.Label(
+            scheda,
+            text=UI_TEXT["anteprima_narrativa"],
+            anchor=tk.W,
+        ).grid(row=0, column=0, sticky="ew", pady=(0, 8))
+        self.conversazione_narrativa = tk.Text(
+            scheda, wrap=tk.WORD, state=tk.DISABLED, padx=10, pady=10
+        )
+        self.conversazione_narrativa.grid(row=1, column=0, sticky="nsew")
+        scorrimento = ttk.Scrollbar(
+            scheda, orient=tk.VERTICAL, command=self.conversazione_narrativa.yview
+        )
+        scorrimento.grid(row=1, column=1, sticky="ns")
+        self.conversazione_narrativa.configure(yscrollcommand=scorrimento.set)
+
+        ttk.Label(scheda, text=UI_TEXT["azione_giocatore"]).grid(
+            row=2, column=0, sticky="w", pady=(10, 4)
+        )
+        self.input_narrativo = tk.Text(
+            scheda, height=4, wrap=tk.WORD, padx=8, pady=8
+        )
+        self.input_narrativo.grid(row=3, column=0, sticky="ew")
+        pulsanti = ttk.Frame(scheda)
+        pulsanti.grid(row=4, column=0, sticky="e", pady=(8, 0))
+        self.pulsante_mostra_prompt = ttk.Button(
+            pulsanti, text=UI_TEXT["mostra_prompt"], command=self._mostra_prompt_narrativo
+        )
+        self.pulsante_mostra_prompt.pack(side=tk.LEFT)
+        self.pulsante_invia_turno = ttk.Button(
+            pulsanti,
+            text=UI_TEXT["invia_turno"],
+            command=self._invia_turno_narrativo,
+            state=tk.DISABLED,
+        )
+        self.pulsante_invia_turno.pack(side=tk.LEFT, padx=(8, 0))
+        self.etichetta_stato_gioco = ttk.Label(scheda, text="", anchor=tk.W)
+        self.etichetta_stato_gioco.grid(row=5, column=0, sticky="ew", pady=(8, 0))
 
     def _costruisci_schede_pacchetto(self) -> None:
         scheda_personaggi = ttk.Frame(self.schede, padding=10)
@@ -549,6 +610,7 @@ class ApplicazioneHaria:
             self.pulsante_verifica_ai,
             self.pulsante_modelli_ai,
             self.pulsante_prova_ai,
+            self.pulsante_invia_turno,
         ]
 
         ttk.Label(scheda, text=UI_TEXT["testo_prova_ai"]).grid(
@@ -579,6 +641,80 @@ class ApplicazioneHaria:
         self.etichetta_stato_ai.grid(
             row=8, column=1, sticky="ew", pady=(10, 0)
         )
+
+    def _prepara_turno_narrativo(self) -> TurnoNarrativoPreparato:
+        if self.mondo_corrente is None:
+            raise ErroreHaria(UI_TEXT["nessun_mondo_gioco"])
+        testo = self.input_narrativo.get("1.0", tk.END).strip()
+        return self.servizio.narrativa.prepara_turno(
+            self.mondo_corrente.id, testo, tuple(self._cronologia_narrativa)
+        )
+
+    def _invia_turno_narrativo(self) -> None:
+        try:
+            configurazione = self._configurazione_ai_visibile()
+            if not configurazione.ollama_model:
+                raise ErroreConfigurazioneAI(UI_TEXT["nessun_modello_gioco"])
+            turno = self._prepara_turno_narrativo()
+        except ErroreHaria as errore:
+            messagebox.showerror(UI_TEXT["errore"], str(errore))
+            return
+        avviata = self._coordinatore_ai.avvia(
+            "turno_narrativo",
+            self.servizio.ai.genera_turno_narrativo,
+            configurazione,
+            turno.messaggi,
+        )
+        if not avviata:
+            self.etichetta_stato_gioco.configure(text=UI_TEXT["stato_ai_occupato"])
+            return
+        self._turno_corrente = turno
+        self._prompt_narrativo_corrente = turno.prompt_visibile
+        self._imposta_controlli_rete_ai(False)
+        self.etichetta_stato_gioco.configure(text=UI_TEXT["turno_in_corso"])
+
+    def _mostra_prompt_narrativo(self) -> None:
+        try:
+            if self.input_narrativo.get("1.0", tk.END).strip():
+                prompt = self._prepara_turno_narrativo().prompt_visibile
+            elif self._prompt_narrativo_corrente:
+                prompt = self._prompt_narrativo_corrente
+            else:
+                prompt = self._prepara_turno_narrativo().prompt_visibile
+        except ErroreHaria as errore:
+            messagebox.showerror(UI_TEXT["errore"], str(errore))
+            return
+        self._prompt_narrativo_corrente = prompt
+        finestra = tk.Toplevel(self.radice)
+        finestra.title(UI_TEXT["prompt_turno"])
+        finestra.geometry("820x620")
+        testo = tk.Text(finestra, wrap=tk.WORD, padx=10, pady=10)
+        testo.pack(fill=tk.BOTH, expand=True)
+        testo.insert("1.0", prompt)
+        testo.configure(state=tk.DISABLED)
+
+    def _azzera_turno_narrativo(self) -> None:
+        self._turno_corrente = None
+        self._prompt_narrativo_corrente = ""
+        self._cronologia_narrativa.clear()
+        self.conversazione_narrativa.configure(state=tk.NORMAL)
+        self.conversazione_narrativa.delete("1.0", tk.END)
+        self.conversazione_narrativa.configure(state=tk.DISABLED)
+        self.input_narrativo.delete("1.0", tk.END)
+        self.etichetta_stato_gioco.configure(text="")
+
+    def _aggiungi_conversazione(self, utente: str, narratore: str) -> None:
+        self._cronologia_narrativa.extend(
+            (f"Utente: {utente}", f"Narratore: {narratore}")
+        )
+        self._cronologia_narrativa[:] = self._cronologia_narrativa[-20:]
+        self.conversazione_narrativa.configure(state=tk.NORMAL)
+        self.conversazione_narrativa.delete("1.0", tk.END)
+        self.conversazione_narrativa.insert(
+            "1.0", "\n\n".join(self._cronologia_narrativa)
+        )
+        self.conversazione_narrativa.configure(state=tk.DISABLED)
+        self.conversazione_narrativa.see(tk.END)
 
     def _carica_configurazione_ai(self) -> None:
         configurazione = self.servizio.carica_configurazione_ai()
@@ -663,6 +799,9 @@ class ApplicazioneHaria:
             self._mostra_esito_ai(esito)
 
     def _mostra_esito_ai(self, esito: EsitoAsincrono[object]) -> None:
+        if esito.operazione == "turno_narrativo":
+            self._mostra_esito_turno_narrativo(esito)
+            return
         if esito.errore is not None:
             messaggio = (
                 str(esito.errore)
@@ -703,10 +842,47 @@ class ApplicazioneHaria:
             return
         self.etichetta_stato_ai.configure(text=UI_TEXT["errore_ai_generico"])
 
+    def _mostra_esito_turno_narrativo(
+        self, esito: EsitoAsincrono[object]
+    ) -> None:
+        turno = self._turno_corrente
+        self._turno_corrente = None
+        if turno is None:
+            return
+        if self.mondo_corrente is None or self.mondo_corrente.id != turno.world_id:
+            return
+        if esito.errore is not None:
+            messaggio = (
+                str(esito.errore)
+                if isinstance(esito.errore, ErroreHaria)
+                else UI_TEXT["errore_ai_generico"]
+            )
+            self.etichetta_stato_gioco.configure(text=messaggio)
+            messagebox.showerror(UI_TEXT["errore"], messaggio)
+            return
+        if not isinstance(esito.risultato, RispostaTestuale):
+            self.etichetta_stato_gioco.configure(text=UI_TEXT["errore_ai_generico"])
+            return
+        try:
+            proposta = self.servizio.narrativa.valida_risposta(
+                turno,
+                esito.risultato.contenuto,
+                datetime.now(timezone.utc),
+            )
+        except ErroreHaria as errore:
+            self.etichetta_stato_gioco.configure(text=str(errore))
+            messagebox.showerror(UI_TEXT["errore"], str(errore))
+            return
+        self._aggiungi_conversazione(turno.user_input, proposta.narrative)
+        self.input_narrativo.delete("1.0", tk.END)
+        self.etichetta_stato_gioco.configure(text=UI_TEXT["turno_completato"])
+
     def _imposta_controlli_rete_ai(self, abilitati: bool) -> None:
         stato = tk.NORMAL if abilitati else tk.DISABLED
         for pulsante in self._pulsanti_rete_ai:
             pulsante.configure(state=stato)
+        if abilitati and self.mondo_corrente is None:
+            self.pulsante_invia_turno.configure(state=tk.DISABLED)
 
     def _costruisci_scheda_memorie(self) -> None:
         scheda = ttk.Frame(self.schede, padding=10)
@@ -937,6 +1113,11 @@ class ApplicazioneHaria:
             self._mostra_mondo(mondi[0])
 
     def _mostra_mondo(self, mondo: Mondo) -> None:
+        mondo_cambiato = (
+            self.mondo_corrente is None or self.mondo_corrente.id != mondo.id
+        )
+        if mondo_cambiato:
+            self._azzera_turno_narrativo()
         self._caricamento_interfaccia = True
         try:
             self.mondo_corrente = mondo
@@ -962,6 +1143,8 @@ class ApplicazioneHaria:
         self.pulsante_salva.configure(state=tk.NORMAL)
         self.pulsante_esporta.configure(state=tk.NORMAL)
         self.pulsante_ripristina.configure(state=tk.NORMAL)
+        if not self._coordinatore_ai.in_corso:
+            self.pulsante_invia_turno.configure(state=tk.NORMAL)
         self._aggiorna_indicatore_modifiche()
 
     def _azzera_validazione(self) -> None:
