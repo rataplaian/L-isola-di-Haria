@@ -58,13 +58,32 @@ filtrare per entità, passare dalla vista corrente alla cronologia completa e
 consultare contenuto, tipo, fonte, certezza, data, interpretazione ed emozione,
 senza mostrare identificatori tecnici.
 
+## Task 004 — Provider Ollama locale
+
+Lo schema SQLite 4 aggiunge una configurazione AI singleton per ciascun file
+database. La scheda italiana **Impostazioni AI** permette di configurare un
+servizio Ollama sul computer locale, verificarne la versione, aggiornare
+l'elenco dei modelli e inviare una breve richiesta tecnica non streaming.
+
+L'integrazione usa direttamente le API native `/api/version`, `/api/tags` e
+`/api/chat` tramite la libreria standard. Sono accettati soltanto `localhost`,
+indirizzi IPv4 `127.0.0.0/8` e IPv6 `::1`; redirect, host remoti, payload troppo
+grandi e risposte non valide vengono rifiutati con messaggi italiani.
+
+Il provider non riceve dati narrativi, non genera ancora la storia e non può
+modificare canone, stato, eventi o memorie. Haria non scarica o gestisce
+modelli: Ollama e i modelli locali devono essere predisposti separatamente
+dall'utente.
+
 ## Requisiti
 
 - Python 3.11 o successivo;
 - Tkinter, incluso nell'installazione standard di Python per Windows e macOS;
 - su Linux, se necessario, il pacchetto di sistema `python3-tk`.
 
-Non sono richieste dipendenze Python esterne, servizi o account.
+Non sono richieste dipendenze Python esterne o account. Ollama è necessario
+soltanto per usare le funzioni della scheda **Impostazioni AI**; editor, dati e
+test automatici non richiedono un servizio Ollama reale.
 
 ## Installazione
 
@@ -109,6 +128,9 @@ py -3 -m haria_engine --database C:\percorso\haria.sqlite3
    oggetto tramite i controlli italiani.
 7. Aprire **Memorie dei personaggi** per consultare conoscenze correnti e
    cronologia soggettiva in sola lettura.
+8. Aprire **Impostazioni AI**, verificare il servizio Ollama locale, aggiornare
+   i modelli, selezionarne uno e usare **Prova modello**. Solo **Salva
+   impostazioni** rende persistenti URL, modello e timeout.
 
 ## Test e verifica di avvio
 
@@ -126,8 +148,9 @@ python3 -m unittest discover -s tests -v
 python3 -m haria_engine --check
 ```
 
-La suite corrente contiene **90 test automatici** per Task 001, Task 002 e
-Task 003.
+La suite corrente contiene **127 test automatici** per Task 001, Task 002,
+Task 003 e Task 004. I test Ollama usano trasporti simulati e non effettuano
+richieste verso servizi reali.
 
 ## Dati e sicurezza dei sorgenti
 
@@ -140,4 +163,4 @@ creata in una nuova cartella.
 Le motivazioni dello stack e i confini architetturali sono descritti in
 `docs/TECHNICAL_DECISIONS.md`. Gli stati puntuali degli incarichi sono in
 `docs/TASK_001_STATUS.md`, `docs/TASK_002_STATUS.md` e
-`docs/TASK_003_STATUS.md`.
+`docs/TASK_003_STATUS.md` e `docs/TASK_004_STATUS.md`.

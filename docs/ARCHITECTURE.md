@@ -44,6 +44,20 @@ Controlla coerenza spaziale, temporale, epistemica e inventariale.
 ### 10. Provider LLM
 Interfaccia sostituibile. Prima implementazione: Ollama.
 
+Nel Task 004, `haria_engine/ai_models.py` contiene configurazione e risultati
+immutabili; `haria_engine/http_transport.py` isola `urllib` con limiti e senza
+redirect; `haria_engine/ollama_provider.py` implementa le API REST native;
+`haria_engine/llm_service.py` espone il servizio applicativo privo di accesso a
+SQLite e Tkinter. `haria_engine/async_coordinator.py` esegue una sola richiesta
+per volta su worker daemon e consegna gli esiti al thread principale tramite
+coda.
+
+La GUI crea una fotografia validata dei campi visibili. Il worker riceve
+soltanto tale fotografia e il servizio HTTP: connessioni SQLite, widget,
+variabili Tkinter e oggetti narrativi restano nel thread principale. Il polling
+con `after` avviene esclusivamente nel thread Tkinter; chiusura e risultati
+tardivi sono gestiti senza aggiornare widget distrutti.
+
 ## Flusso di un turno
 1. ricezione azione utente;
 2. analisi dell'azione;
@@ -60,7 +74,7 @@ Interfaccia sostituibile. Prima implementazione: Ollama.
 La narrazione non è la fonte della verità.
 Il database è la fonte della verità.
 
-## Confini implementati fino al Task 003
+## Confini implementati fino al Task 004
 
 - Il canone originale resta immutabile in `world_entities.canonical_data` e
   nelle fotografie sorgente.
@@ -77,7 +91,12 @@ Il database è la fonte della verità.
   immutabile della nuova memoria; `is_current` ed `effective_status` sono
   calcolati verificando l'esistenza di un successore.
 - La configurazione narrativa continua a essere versionata separatamente.
-- Simulazione, generazione narrativa e provider LLM non sono implementati.
+- La configurazione AI è globale per file SQLite, separata dai mondi e dalle
+  versioni narrative. Il provider contatta soltanto un URL di loopback
+  validato e non può leggere o modificare dati narrativi.
+- Il provider Ollama supporta soltanto verifica, elenco modelli e prova
+  testuale non streaming. Simulazione e generazione narrativa non sono
+  implementate.
 
 La GUI legge modelli tipizzati e non accede direttamente a SQL o dati tecnici.
 La vista delle memorie usa query aggregate per fonti ed entità collegate.
