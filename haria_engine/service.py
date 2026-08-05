@@ -10,6 +10,7 @@ import tempfile
 from collections.abc import Mapping
 from pathlib import Path, PurePosixPath
 
+from .ai_models import ConfigurazioneAI
 from .errors import ErroreEsportazione, ErroreImportazione
 from .memories import ServizioMemorie
 from .models import FileSorgente, Mondo, RisultatoEsportazione, VersioneMondo
@@ -146,6 +147,14 @@ class ServizioMondi:
 
     def elenca_mondi(self) -> list[Mondo]:
         return self.archivio.elenca_mondi()
+
+    def carica_configurazione_ai(self) -> ConfigurazioneAI:
+        return self.archivio.carica_configurazione_ai()
+
+    def salva_configurazione_ai(
+        self, configurazione: ConfigurazioneAI
+    ) -> ConfigurazioneAI:
+        return self.archivio.salva_configurazione_ai(configurazione)
 
     def carica_mondo(self, mondo_id: str) -> Mondo:
         return self.archivio.carica_mondo(mondo_id)

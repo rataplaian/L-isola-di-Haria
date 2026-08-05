@@ -8,7 +8,15 @@ from collections.abc import Iterable, Mapping
 from datetime import datetime, timezone
 from pathlib import Path
 
+from .ai_models import (
+    OLLAMA_URL_PREDEFINITO,
+    PROVIDER_OLLAMA,
+    TIMEOUT_PREDEFINITO,
+    ConfigurazioneAI,
+    valida_configurazione_ai,
+)
 from .errors import (
+    ErroreConfigurazioneAI,
     ErroreImportazione,
     ErroreMemoria,
     ErroreMigrazione,
@@ -79,7 +87,10 @@ class ArchivioSQLite:
         if versione == 2:
             self._migra_da_2_a_3()
             versione = 3
-        if versione != 3:
+        if versione == 3:
+            self._migra_da_3_a_4()
+            versione = 4
+        if versione != 4:
             raise ErroreMigrazione(
                 f"La versione schema {versione} del database non è supportata."
             )
@@ -281,6 +292,50 @@ class ArchivioSQLite:
             raise ErroreMigrazione(
                 "La migrazione allo schema 2 non è riuscita; il database è rimasto "
                 "allo schema 1 senza dati parziali. Dettaglio: " + str(errore)
+            ) from errore
+
+    def _migra_da_3_a_4(self) -> None:
+        self._connessione.execute("BEGIN IMMEDIATE")
+        try:
+            self._connessione.execute(
+                """
+                CREATE TABLE ai_settings (
+                    settings_id INTEGER PRIMARY KEY,
+                    provider TEXT NOT NULL,
+                    ollama_base_url TEXT NOT NULL,
+                    ollama_model TEXT NOT NULL,
+                    ollama_timeout_seconds INTEGER NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    CHECK (settings_id = 1),
+                    CHECK (provider = 'ollama'),
+                    CHECK (
+                        typeof(ollama_timeout_seconds) = 'integer'
+                        AND ollama_timeout_seconds BETWEEN 1 AND 300
+                    )
+                )
+                """
+            )
+            self._connessione.execute(
+                """
+                INSERT INTO ai_settings (
+                    settings_id, provider, ollama_base_url, ollama_model,
+                    ollama_timeout_seconds, updated_at
+                ) VALUES (1, ?, ?, '', ?, ?)
+                """,
+                (
+                    PROVIDER_OLLAMA,
+                    OLLAMA_URL_PREDEFINITO,
+                    TIMEOUT_PREDEFINITO,
+                    _adesso_utc(),
+                ),
+            )
+            self._connessione.execute("PRAGMA user_version = 4")
+            self._connessione.commit()
+        except sqlite3.Error as errore:
+            self._connessione.rollback()
+            raise ErroreMigrazione(
+                "La migrazione allo schema 4 non è riuscita; il database è "
+                "rimasto allo schema 3 senza dati parziali."
             ) from errore
 
     def _migra_da_2_a_3(self) -> None:
@@ -1232,6 +1287,63 @@ class ArchivioSQLite:
     def file_sorgente(self, mondo_id: str) -> list[FileSorgente]:
         self.carica_mondo(mondo_id)
         return self._file_sorgente_senza_validazione(mondo_id)
+
+    def carica_configurazione_ai(self) -> ConfigurazioneAI:
+        riga = self._connessione.execute(
+            """
+            SELECT provider, ollama_base_url, ollama_model,
+                   ollama_timeout_seconds, updated_at
+            FROM ai_settings WHERE settings_id = 1
+            """
+        ).fetchone()
+        if riga is None:
+            raise ErroreConfigurazioneAI(
+                "La configurazione AI non è presente nell'archivio."
+            )
+        return valida_configurazione_ai(
+            riga["provider"],
+            riga["ollama_base_url"],
+            riga["ollama_model"],
+            riga["ollama_timeout_seconds"],
+            updated_at=riga["updated_at"],
+        )
+
+    def salva_configurazione_ai(
+        self, configurazione: ConfigurazioneAI
+    ) -> ConfigurazioneAI:
+        valida = valida_configurazione_ai(
+            configurazione.provider,
+            configurazione.ollama_base_url,
+            configurazione.ollama_model,
+            configurazione.ollama_timeout_seconds,
+        )
+        istante = _adesso_utc()
+        try:
+            with self._connessione:
+                aggiornamento = self._connessione.execute(
+                    """
+                    UPDATE ai_settings
+                    SET provider = ?, ollama_base_url = ?, ollama_model = ?,
+                        ollama_timeout_seconds = ?, updated_at = ?
+                    WHERE settings_id = 1
+                    """,
+                    (
+                        valida.provider,
+                        valida.ollama_base_url,
+                        valida.ollama_model,
+                        valida.ollama_timeout_seconds,
+                        istante,
+                    ),
+                )
+                if aggiornamento.rowcount != 1:
+                    raise sqlite3.IntegrityError(
+                        "La configurazione singleton non è presente."
+                    )
+        except sqlite3.Error as errore:
+            raise ErroreConfigurazioneAI(
+                "Non è stato possibile salvare le impostazioni AI."
+            ) from errore
+        return self.carica_configurazione_ai()
 
     def chiudi(self) -> None:
         self._connessione.close()
