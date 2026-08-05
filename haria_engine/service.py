@@ -11,6 +11,8 @@ from collections.abc import Mapping
 from pathlib import Path, PurePosixPath
 
 from .ai_models import ConfigurazioneAI
+from .http_transport import TrasportoHTTP
+from .llm_service import ServizioAI
 from .errors import ErroreEsportazione, ErroreImportazione
 from .memories import ServizioMemorie
 from .models import FileSorgente, Mondo, RisultatoEsportazione, VersioneMondo
@@ -30,10 +32,15 @@ FILE_OBBLIGATORI = (
 class ServizioMondi:
     """API applicativa indipendente dall'interfaccia grafica."""
 
-    def __init__(self, percorso_database: str | Path) -> None:
+    def __init__(
+        self,
+        percorso_database: str | Path,
+        trasporto_ai: TrasportoHTTP | None = None,
+    ) -> None:
         self.archivio = ArchivioSQLite(percorso_database)
         self.stato_mondo = ServizioStatoMondo(self.archivio)
         self.memorie = ServizioMemorie(self.archivio)
+        self.ai = ServizioAI(trasporto_ai)
 
     def importa_da_cartella(self, cartella_sorgente: str | Path) -> Mondo:
         sorgente = Path(cartella_sorgente).expanduser().resolve()
