@@ -3,11 +3,20 @@
 from __future__ import annotations
 
 import tkinter as tk
+from collections.abc import Callable
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
+from .ai_models import (
+    ConfigurazioneAI,
+    ModelloLocale,
+    RispostaTestuale,
+    RisultatoConnessione,
+    valida_configurazione_ai,
+)
+from .async_coordinator import CoordinatoreAsincrono, EsitoAsincrono
 from .editor_state import SceltaModifiche, StatoEditor
-from .errors import ErroreHaria
+from .errors import ErroreConfigurazioneAI, ErroreHaria
 from .memories import MemoriaPersonaggio
 from .models import Mondo
 from .paths import database_predefinito
@@ -82,6 +91,27 @@ UI_TEXT = {
     "emozione_memoria": "Emozione",
     "stato_memoria": "Stato",
     "nessuna_memoria": "Nessuna memoria disponibile per i filtri selezionati.",
+    "impostazioni_ai": "Impostazioni AI",
+    "provider_ai": "Provider",
+    "url_servizio_ai": "URL del servizio",
+    "timeout_ai": "Timeout (secondi)",
+    "modello_ai": "Modello locale",
+    "salva_impostazioni_ai": "Salva impostazioni",
+    "verifica_connessione_ai": "Verifica connessione",
+    "aggiorna_modelli_ai": "Aggiorna modelli",
+    "prova_modello_ai": "Prova modello",
+    "testo_prova_ai": "Testo breve di prova",
+    "risposta_ai": "Risposta del modello",
+    "versione_ollama": "Versione Ollama: {versione}",
+    "versione_ollama_non_verificata": "Versione Ollama: non verificata",
+    "stato_ai_pronto": "Impostazioni AI pronte. Nessuna connessione automatica.",
+    "stato_ai_salvato": "Impostazioni AI salvate.",
+    "stato_ai_connessione": "Connessione a Ollama verificata.",
+    "stato_ai_modelli": "Elenco dei modelli locali aggiornato.",
+    "stato_ai_prova": "Prova del modello completata.",
+    "stato_ai_in_corso": "Operazione AI in corso…",
+    "stato_ai_occupato": "Attendi il completamento dell'operazione AI in corso.",
+    "errore_ai_generico": "L'operazione AI non è riuscita.",
 }
 
 
@@ -128,13 +158,19 @@ class ApplicazioneHaria:
         self._personaggi_memorie: list[EntitaMondo] = []
         self._entita_memorie: list[EntitaMondo] = []
         self._cronologia_completa_memorie = tk.BooleanVar(value=False)
+        self._coordinatore_ai = CoordinatoreAsincrono()
+        self._controllo_ai_after: str | None = None
+        self._chiusura_in_corso = False
+        self._pulsanti_rete_ai: list[ttk.Button] = []
 
         self.radice.title(UI_TEXT["titolo_finestra"])
         self.radice.geometry("1080x720")
         self.radice.minsize(820, 560)
         self.radice.protocol("WM_DELETE_WINDOW", self.chiudi)
         self._costruisci_interfaccia()
+        self._carica_configurazione_ai()
         self._carica_mondo_esistente()
+        self._programma_controllo_ai()
 
     def _costruisci_interfaccia(self) -> None:
         contenitore = ttk.Frame(self.radice, padding=14)
@@ -202,6 +238,7 @@ class ApplicazioneHaria:
 
         self._costruisci_scheda_stato_mondo()
         self._costruisci_scheda_memorie()
+        self._costruisci_scheda_ai()
 
         scheda_cronologia = ttk.Frame(self.schede, padding=10)
         self.schede.add(scheda_cronologia, text=UI_TEXT["cronologia"])
@@ -241,6 +278,233 @@ class ApplicazioneHaria:
             contenitore, text=UI_TEXT["istruzione_importa"], anchor=tk.W
         )
         self.etichetta_stato.pack(fill=tk.X, pady=(10, 0))
+
+    def _costruisci_scheda_ai(self) -> None:
+        scheda = ttk.Frame(self.schede, padding=14)
+        self.schede.add(scheda, text=UI_TEXT["impostazioni_ai"])
+        scheda.columnconfigure(1, weight=1)
+        scheda.rowconfigure(7, weight=1)
+
+        self._url_ai = tk.StringVar()
+        self._timeout_ai = tk.StringVar()
+        self._modello_ai = tk.StringVar()
+        self._testo_prova_ai = tk.StringVar()
+
+        ttk.Label(scheda, text=UI_TEXT["provider_ai"]).grid(
+            row=0, column=0, sticky="w", padx=(0, 12), pady=5
+        )
+        ttk.Label(scheda, text="Ollama").grid(row=0, column=1, sticky="w", pady=5)
+
+        ttk.Label(scheda, text=UI_TEXT["url_servizio_ai"]).grid(
+            row=1, column=0, sticky="w", padx=(0, 12), pady=5
+        )
+        self.campo_url_ai = ttk.Entry(scheda, textvariable=self._url_ai)
+        self.campo_url_ai.grid(row=1, column=1, sticky="ew", pady=5)
+
+        ttk.Label(scheda, text=UI_TEXT["timeout_ai"]).grid(
+            row=2, column=0, sticky="w", padx=(0, 12), pady=5
+        )
+        self.campo_timeout_ai = ttk.Entry(
+            scheda, textvariable=self._timeout_ai, width=12
+        )
+        self.campo_timeout_ai.grid(row=2, column=1, sticky="w", pady=5)
+
+        ttk.Label(scheda, text=UI_TEXT["modello_ai"]).grid(
+            row=3, column=0, sticky="w", padx=(0, 12), pady=5
+        )
+        self.selettore_modello_ai = ttk.Combobox(
+            scheda, textvariable=self._modello_ai, state="readonly"
+        )
+        self.selettore_modello_ai.grid(row=3, column=1, sticky="ew", pady=5)
+
+        pulsanti = ttk.Frame(scheda)
+        pulsanti.grid(row=4, column=0, columnspan=2, sticky="ew", pady=(8, 10))
+        self.pulsante_salva_ai = ttk.Button(
+            pulsanti,
+            text=UI_TEXT["salva_impostazioni_ai"],
+            command=self._salva_configurazione_ai,
+        )
+        self.pulsante_salva_ai.pack(side=tk.LEFT)
+        self.pulsante_verifica_ai = ttk.Button(
+            pulsanti,
+            text=UI_TEXT["verifica_connessione_ai"],
+            command=self._verifica_connessione_ai,
+        )
+        self.pulsante_verifica_ai.pack(side=tk.LEFT, padx=(8, 0))
+        self.pulsante_modelli_ai = ttk.Button(
+            pulsanti,
+            text=UI_TEXT["aggiorna_modelli_ai"],
+            command=self._aggiorna_modelli_ai,
+        )
+        self.pulsante_modelli_ai.pack(side=tk.LEFT, padx=(8, 0))
+        self.pulsante_prova_ai = ttk.Button(
+            pulsanti,
+            text=UI_TEXT["prova_modello_ai"],
+            command=self._prova_modello_ai,
+        )
+        self.pulsante_prova_ai.pack(side=tk.LEFT, padx=(8, 0))
+        self._pulsanti_rete_ai = [
+            self.pulsante_verifica_ai,
+            self.pulsante_modelli_ai,
+            self.pulsante_prova_ai,
+        ]
+
+        ttk.Label(scheda, text=UI_TEXT["testo_prova_ai"]).grid(
+            row=5, column=0, sticky="w", padx=(0, 12), pady=5
+        )
+        self.campo_testo_prova_ai = ttk.Entry(
+            scheda, textvariable=self._testo_prova_ai
+        )
+        self.campo_testo_prova_ai.grid(row=5, column=1, sticky="ew", pady=5)
+
+        ttk.Label(scheda, text=UI_TEXT["risposta_ai"]).grid(
+            row=6, column=0, columnspan=2, sticky="w", pady=(5, 4)
+        )
+        self.risposta_ai = tk.Text(
+            scheda, height=8, wrap=tk.WORD, state=tk.DISABLED, padx=8, pady=8
+        )
+        self.risposta_ai.grid(row=7, column=0, columnspan=2, sticky="nsew")
+
+        self.etichetta_versione_ollama = ttk.Label(
+            scheda, text=UI_TEXT["versione_ollama_non_verificata"]
+        )
+        self.etichetta_versione_ollama.grid(
+            row=8, column=0, sticky="w", pady=(10, 0)
+        )
+        self.etichetta_stato_ai = ttk.Label(
+            scheda, text=UI_TEXT["stato_ai_pronto"], anchor=tk.W
+        )
+        self.etichetta_stato_ai.grid(
+            row=8, column=1, sticky="ew", pady=(10, 0)
+        )
+
+    def _carica_configurazione_ai(self) -> None:
+        configurazione = self.servizio.carica_configurazione_ai()
+        self._url_ai.set(configurazione.ollama_base_url)
+        self._timeout_ai.set(str(configurazione.ollama_timeout_seconds))
+        self._modello_ai.set(configurazione.ollama_model)
+        self.selettore_modello_ai["values"] = (
+            (configurazione.ollama_model,) if configurazione.ollama_model else ()
+        )
+
+    def _configurazione_ai_visibile(self) -> ConfigurazioneAI:
+        testo_timeout = self._timeout_ai.get().strip()
+        try:
+            timeout = int(testo_timeout)
+        except ValueError as errore:
+            raise ErroreConfigurazioneAI(
+                "Il timeout deve essere un numero intero tra 1 e 300 secondi."
+            ) from errore
+        return valida_configurazione_ai(
+            "ollama",
+            self._url_ai.get(),
+            self._modello_ai.get(),
+            timeout,
+        )
+
+    def _salva_configurazione_ai(self) -> None:
+        try:
+            configurazione = self._configurazione_ai_visibile()
+            salvata = self.servizio.salva_configurazione_ai(configurazione)
+            self._url_ai.set(salvata.ollama_base_url)
+            self._timeout_ai.set(str(salvata.ollama_timeout_seconds))
+            self.etichetta_stato_ai.configure(text=UI_TEXT["stato_ai_salvato"])
+        except ErroreHaria as errore:
+            messagebox.showerror(UI_TEXT["errore"], str(errore))
+
+    def _verifica_connessione_ai(self) -> None:
+        self._avvia_operazione_ai(
+            "connessione", self.servizio.ai.verifica_connessione
+        )
+
+    def _aggiorna_modelli_ai(self) -> None:
+        self._avvia_operazione_ai("modelli", self.servizio.ai.elenca_modelli)
+
+    def _prova_modello_ai(self) -> None:
+        self._avvia_operazione_ai(
+            "prova",
+            self.servizio.ai.genera_testo_di_prova,
+            self._testo_prova_ai.get(),
+        )
+
+    def _avvia_operazione_ai(
+        self,
+        operazione: str,
+        funzione: Callable[..., object],
+        *argomenti: object,
+    ) -> None:
+        try:
+            configurazione = self._configurazione_ai_visibile()
+        except ErroreHaria as errore:
+            messagebox.showerror(UI_TEXT["errore"], str(errore))
+            return
+        avviata = self._coordinatore_ai.avvia(
+            operazione, funzione, configurazione, *argomenti
+        )
+        if not avviata:
+            self.etichetta_stato_ai.configure(text=UI_TEXT["stato_ai_occupato"])
+            return
+        self._imposta_controlli_rete_ai(False)
+        self.etichetta_stato_ai.configure(text=UI_TEXT["stato_ai_in_corso"])
+
+    def _programma_controllo_ai(self) -> None:
+        if self._chiusura_in_corso:
+            return
+        self._elabora_esiti_ai()
+        self._controllo_ai_after = self.radice.after(
+            75, self._programma_controllo_ai
+        )
+
+    def _elabora_esiti_ai(self) -> None:
+        for esito in self._coordinatore_ai.raccogli():
+            self._imposta_controlli_rete_ai(True)
+            self._mostra_esito_ai(esito)
+
+    def _mostra_esito_ai(self, esito: EsitoAsincrono[object]) -> None:
+        if esito.errore is not None:
+            messaggio = (
+                str(esito.errore)
+                if isinstance(esito.errore, ErroreHaria)
+                else UI_TEXT["errore_ai_generico"]
+            )
+            self.etichetta_stato_ai.configure(text=messaggio)
+            messagebox.showerror(UI_TEXT["errore"], messaggio)
+            return
+        if esito.operazione == "connessione" and isinstance(
+            esito.risultato, RisultatoConnessione
+        ):
+            self.etichetta_versione_ollama.configure(
+                text=UI_TEXT["versione_ollama"].format(
+                    versione=esito.risultato.informazioni.versione
+                )
+            )
+            self.etichetta_stato_ai.configure(text=UI_TEXT["stato_ai_connessione"])
+            return
+        if esito.operazione == "modelli" and isinstance(esito.risultato, tuple):
+            modelli = tuple(
+                voce for voce in esito.risultato if isinstance(voce, ModelloLocale)
+            )
+            nomi = tuple(voce.nome for voce in modelli)
+            selezionato = self._modello_ai.get()
+            self.selettore_modello_ai["values"] = nomi
+            self._modello_ai.set(selezionato if selezionato in nomi else "")
+            self.etichetta_stato_ai.configure(text=UI_TEXT["stato_ai_modelli"])
+            return
+        if esito.operazione == "prova" and isinstance(
+            esito.risultato, RispostaTestuale
+        ):
+            self.risposta_ai.configure(state=tk.NORMAL)
+            self.risposta_ai.delete("1.0", tk.END)
+            self.risposta_ai.insert("1.0", esito.risultato.contenuto)
+            self.risposta_ai.configure(state=tk.DISABLED)
+            self.etichetta_stato_ai.configure(text=UI_TEXT["stato_ai_prova"])
+            return
+        self.etichetta_stato_ai.configure(text=UI_TEXT["errore_ai_generico"])
+
+    def _imposta_controlli_rete_ai(self, abilitati: bool) -> None:
+        stato = tk.NORMAL if abilitati else tk.DISABLED
+        for pulsante in self._pulsanti_rete_ai:
+            pulsante.configure(state=stato)
 
     def _costruisci_scheda_memorie(self) -> None:
         scheda = ttk.Frame(self.schede, padding=10)
@@ -863,6 +1127,14 @@ class ApplicazioneHaria:
     def chiudi(self) -> None:
         if not self._puo_proseguire_con_modifiche("chiudere l'applicazione"):
             return
+        self._chiusura_in_corso = True
+        self._coordinatore_ai.chiudi()
+        if self._controllo_ai_after is not None:
+            try:
+                self.radice.after_cancel(self._controllo_ai_after)
+            except tk.TclError:
+                pass
+            self._controllo_ai_after = None
         self.servizio.chiudi()
         self.radice.destroy()
 
