@@ -116,6 +116,19 @@ crea eventi o memorie, non fa avanzare il tempo e non salva la conversazione.
 Le letture SQLite e gli aggiornamenti Tkinter restano nel thread principale;
 il worker daemon esegue soltanto la richiesta HTTP locale.
 
+## Task 008 — Turni narrativi persistenti
+
+Lo schema SQLite 6 conserva una cronologia narrativa unica per ogni mondo. Un
+turno valido salva insieme input, narrazione, prompt effettivo, output grezzo,
+tempo trascorso, eventi, stato e memorie candidate. L'applicazione usa una sola
+transazione: un errore in qualsiasi passaggio annulla l'intero turno.
+
+La scheda **Gioca** ricarica dal database gli ultimi cento turni visibili e usa
+gli ultimi venti messaggi per il prompt, senza cancellare la cronologia
+precedente. La partita resta interamente locale e non aggiunge moderazione,
+blacklist o trasformazioni del testo narrativo. Ricerca semantica, simulazione
+fuori scena, salvataggi paralleli e rewind non sono ancora attivi.
+
 ## Requisiti
 
 - Python 3.11 o successivo;
@@ -178,8 +191,8 @@ py -3 -m haria_engine --database C:\percorso\haria.sqlite3
 10. Usare **Personaggi**, **Lore**, **Regole e stile** e **Media** per consultare
     il pacchetto completo senza vedere dati tecnici.
 11. Aprire **Gioca**, scrivere un'azione, usare **Mostra prompt** per ispezionare
-    il contesto effettivo e selezionare **Invia** per generare un'anteprima con
-    il modello Ollama configurato.
+    il contesto effettivo e selezionare **Invia**. Il turno viene mostrato solo
+    dopo il salvataggio atomico e torna disponibile alla riapertura.
 
 ## Test e verifica di avvio
 
@@ -197,7 +210,7 @@ python3 -m unittest discover -s tests -v
 python3 -m haria_engine --check
 ```
 
-La suite corrente contiene **237 test automatici** per Task 001–007. I test
+La suite corrente contiene **275 test automatici** per Task 001–008. I test
 Ollama usano trasporti simulati e non
 effettuano richieste verso servizi reali; i test del validatore verificano
 anche che database e configurazione AI rimangano invariati.
@@ -214,5 +227,5 @@ Le motivazioni dello stack e i confini architetturali sono descritti in
 `docs/TECHNICAL_DECISIONS.md`. Gli stati puntuali degli incarichi sono in
 `docs/TASK_001_STATUS.md`, `docs/TASK_002_STATUS.md`,
 `docs/TASK_003_STATUS.md`, `docs/TASK_004_STATUS.md`,
-`docs/TASK_005_STATUS.md`, `docs/TASK_006_STATUS.md` e
-`docs/TASK_007_STATUS.md`.
+`docs/TASK_005_STATUS.md`, `docs/TASK_006_STATUS.md`,
+`docs/TASK_007_STATUS.md` e `docs/TASK_008_STATUS.md`.

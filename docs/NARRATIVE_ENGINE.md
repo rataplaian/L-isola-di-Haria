@@ -24,12 +24,10 @@ Il modello deve produrre:
 - cambiamenti di stato;
 - memorie candidate.
 
-## Validazione
-Le operazioni vengono applicate soltanto dopo validazione.
-
-Nel Task 007 le operazioni vengono esclusivamente simulate dal validatore.
-Anche una proposta valida non viene applicata: eventi, stato, memorie, tempo e
-conversazione persistente restano invariati.
+## Validazione e persistenza
+Le operazioni vengono applicate soltanto dopo parsing rigoroso, validazione e
+costruzione del piano immutabile. Nel Task 008 una singola transazione salva
+turno, eventi, stato, memorie e tempo; un errore annulla ogni parte.
 
 ## Recupero memoria
 Usare:
@@ -37,8 +35,9 @@ Usare:
 - filtri temporali;
 - filtri per personaggio;
 - filtri per luogo;
-- ricerca semantica;
 - priorità alla fonte canonica e allo stato corrente.
+
+La ricerca semantica non è ancora implementata.
 
 ## Anteprima Task 007
 
@@ -48,6 +47,15 @@ correnti e gli ultimi venti messaggi della sessione. Il personaggio giocante
 viene risolto da `player_character_id` nella fotografia archiviata di
 `world.json`; il valore deve indicare un personaggio esistente.
 
-La ricerca semantica, il secondo passaggio LLM, l'avanzamento del tempo,
-l'applicazione atomica e il salvataggio della conversazione restano obiettivi
-futuri e non fanno parte di questa anteprima.
+## Partita persistente Task 008
+
+Ogni mondo possiede una sola sessione con tempo corrente e numerazione
+progressiva. Il prompt usa gli ultimi venti messaggi persistiti; tutti i turni,
+prompt e output grezzi restano nell'archivio locale senza scadenza automatica.
+La GUI mostra il turno solo dopo il commit e ricarica conversazione e tempo alla
+riapertura.
+
+Il motore non aggiunge moderazione, censura, blacklist o trasformazioni
+tematiche. Restano obbligatori i controlli tecnici di coerenza, i vincoli
+canonici e l'autonomia dei personaggi. Simulazione fuori scena, embeddings,
+riassunti, dimenticanza, slot paralleli e rewind restano fuori ambito.
