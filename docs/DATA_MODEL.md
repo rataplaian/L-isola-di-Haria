@@ -37,9 +37,9 @@ Ogni entità conserva uno stato attuale separato dal profilo canonico.
 ## Eventi
 Gli eventi sono immutabili e descrivono la causa dei cambiamenti.
 
-## Schema SQLite implementato fino al Task 003
+## Schema SQLite implementato fino al Task 004
 
-Lo schema applicativo corrente è la versione 3. Le tabelle dei Task 001 e 002
+Lo schema applicativo corrente è la versione 4. Le tabelle dei Task precedenti
 restano disponibili senza modifiche distruttive.
 
 ### `world_entities`
@@ -129,6 +129,26 @@ le fotografie `characters.json` conservate in `source_files`. Gli ID importati
 sono deterministici e includono mondo, personaggio, posizione e impronta del
 contenuto. Un archivio mancante o non valido provoca rollback completo:
 `PRAGMA user_version` resta 2 e nessuna tabella Task 003 rimane parziale.
+
+### `ai_settings`
+
+Conserva una sola configurazione AI applicativa per file SQLite. La riga ha
+`settings_id = 1`, provider `ollama`, URL base, modello, timeout intero tra 1 e
+300 secondi e data di aggiornamento. Vincoli SQLite impediscono identificatori
+diversi, provider sconosciuti, timeout non interi o fuori intervallo e una
+seconda configurazione.
+
+La configurazione è condivisa da tutti i mondi nello stesso database ma non da
+database distinti. Non appartiene alle versioni narrative e il salvataggio
+aggiorna esclusivamente la riga singleton.
+
+## Migrazione 3 → 4
+
+La migrazione crea `ai_settings` e inserisce atomicamente i valori predefiniti:
+provider `ollama`, URL `http://localhost:11434`, modello vuoto e timeout 30
+secondi. `PRAGMA user_version` diventa 4 soltanto al termine. Un errore annulla
+creazione e inserimento, lascia lo schema 3 e non modifica mondi, versioni,
+stato, eventi o memorie. La riapertura non duplica la configurazione.
 
 ## Limite temporale delle osservazioni
 

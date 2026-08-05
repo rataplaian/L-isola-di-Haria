@@ -27,10 +27,10 @@
 - cronologia e vista corrente;
 - test di presenza, soggettività, persistenza e rollback.
 
-## M4 — Ollama
-- provider locale;
-- prompt effettivo;
-- output strutturato.
+## M4 — Ollama — collegamento tecnico implementato
+- provider locale sostituibile e configurazione persistente;
+- verifica versione, elenco modelli e prova testuale non streaming;
+- nessun prompt narrativo, output strutturato o modifica del mondo nel Task 004.
 
 ## M5 — Validatore
 - coerenza spaziale;
