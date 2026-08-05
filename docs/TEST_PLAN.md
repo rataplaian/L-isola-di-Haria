@@ -55,3 +55,15 @@ Tutti gli stati devono essere identici.
 ## Test 6 — Cambio LLM
 Cambiare provider o modello.
 La campagna non deve perdere dati.
+
+## Test 7 — Validazione deterministica
+
+Controllare un mondo integro e proposte valide o incoerenti.
+
+Risultati:
+- problemi ordinati per severità, ambito e riferimenti stabili;
+- riferimenti, posizioni, possessori, tempi e conoscenze incoerenti rilevati;
+- una proposta valida produce soltanto una nuova fotografia in memoria;
+- una proposta non valida non produce una proiezione;
+- database, schema, eventi, stato, memorie e configurazione AI invariati;
+- nessuna richiesta HTTP o connessione a Ollama.
