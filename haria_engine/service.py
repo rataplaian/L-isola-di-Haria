@@ -17,6 +17,7 @@ from .errors import ErroreEsportazione, ErroreImportazione
 from .memories import ServizioMemorie
 from .models import FileSorgente, Mondo, RisultatoEsportazione, VersioneMondo
 from .storage import ArchivioSQLite
+from .validation import ServizioValidazione
 from .world_state import ServizioStatoMondo, importa_entita_da_file
 
 
@@ -40,6 +41,7 @@ class ServizioMondi:
         self.archivio = ArchivioSQLite(percorso_database)
         self.stato_mondo = ServizioStatoMondo(self.archivio)
         self.memorie = ServizioMemorie(self.archivio)
+        self.validazione = ServizioValidazione(self.archivio)
         self.ai = ServizioAI(trasporto_ai)
 
     def importa_da_cartella(self, cartella_sorgente: str | Path) -> Mondo:

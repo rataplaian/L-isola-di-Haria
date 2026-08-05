@@ -75,6 +75,21 @@ modificare canone, stato, eventi o memorie. Haria non scarica o gestisce
 modelli: Ollama e i modelli locali devono essere predisposti separatamente
 dall'utente.
 
+## Task 005 — Validatore deterministico del mondo
+
+Il validatore costruisce una fotografia immutabile del mondo tramite le API
+tipizzate dell'archivio e controlla coerenza strutturale, spaziale, temporale,
+inventariale ed epistemica. Le proposte di spostamento, trasferimento, cambio
+di stato, evento descrittivo e acquisizione di conoscenza possono essere
+simulate in memoria, singolarmente o in sequenza, senza generare eventi o
+memorie e senza scrivere nel database.
+
+La scheda italiana **Validazione mondo** esegue il controllo soltanto su
+richiesta esplicita e mostra un riepilogo e problemi ordinati con severità,
+ambito e messaggio leggibili. Non espone codici tecnici, identificatori, JSON o
+dettagli del database. Il Task 005 non usa il provider Ollama e mantiene lo
+schema SQLite alla versione 4.
+
 ## Requisiti
 
 - Python 3.11 o successivo;
@@ -131,6 +146,8 @@ py -3 -m haria_engine --database C:\percorso\haria.sqlite3
 8. Aprire **Impostazioni AI**, verificare il servizio Ollama locale, aggiornare
    i modelli, selezionarne uno e usare **Prova modello**. Solo **Salva
    impostazioni** rende persistenti URL, modello e timeout.
+9. Aprire **Validazione mondo** e selezionare **Controlla mondo** per eseguire
+   un audit deterministico in sola lettura del mondo corrente.
 
 ## Test e verifica di avvio
 
@@ -148,9 +165,10 @@ python3 -m unittest discover -s tests -v
 python3 -m haria_engine --check
 ```
 
-La suite corrente contiene **127 test automatici** per Task 001, Task 002,
-Task 003 e Task 004. I test Ollama usano trasporti simulati e non effettuano
-richieste verso servizi reali.
+La suite corrente contiene **178 test automatici** per Task 001, Task 002,
+Task 003, Task 004 e Task 005. I test Ollama usano trasporti simulati e non
+effettuano richieste verso servizi reali; i test del validatore verificano
+anche che database e configurazione AI rimangano invariati.
 
 ## Dati e sicurezza dei sorgenti
 
@@ -162,5 +180,6 @@ creata in una nuova cartella.
 
 Le motivazioni dello stack e i confini architetturali sono descritti in
 `docs/TECHNICAL_DECISIONS.md`. Gli stati puntuali degli incarichi sono in
-`docs/TASK_001_STATUS.md`, `docs/TASK_002_STATUS.md` e
-`docs/TASK_003_STATUS.md` e `docs/TASK_004_STATUS.md`.
+`docs/TASK_001_STATUS.md`, `docs/TASK_002_STATUS.md`,
+`docs/TASK_003_STATUS.md`, `docs/TASK_004_STATUS.md` e
+`docs/TASK_005_STATUS.md`.

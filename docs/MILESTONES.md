@@ -32,11 +32,11 @@
 - verifica versione, elenco modelli e prova testuale non streaming;
 - nessun prompt narrativo, output strutturato o modifica del mondo nel Task 004.
 
-## M5 — Validatore
-- coerenza spaziale;
-- temporale;
-- inventariale;
-- epistemica.
+## M5 — Validatore — implementato
+- audit deterministico di integrità, spazio, tempo, inventario ed epistemica;
+- proposte tipizzate e dry-run immutabile, anche in sequenza;
+- interfaccia italiana in sola lettura;
+- nessuna scrittura, migrazione SQLite o dipendenza da Ollama.
 
 ## M6 — Import Haria completo
 - JSON master;

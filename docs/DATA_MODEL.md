@@ -37,7 +37,7 @@ Ogni entità conserva uno stato attuale separato dal profilo canonico.
 ## Eventi
 Gli eventi sono immutabili e descrivono la causa dei cambiamenti.
 
-## Schema SQLite implementato fino al Task 004
+## Schema SQLite implementato fino al Task 005
 
 Lo schema applicativo corrente è la versione 4. Le tabelle dei Task precedenti
 restano disponibili senza modifiche distruttive.
@@ -149,6 +149,19 @@ provider `ollama`, URL `http://localhost:11434`, modello vuoto e timeout 30
 secondi. `PRAGMA user_version` diventa 4 soltanto al termine. Un errore annulla
 creazione e inserimento, lascia lo schema 3 e non modifica mondi, versioni,
 stato, eventi o memorie. La riapertura non duplica la configurazione.
+
+## Fotografia di validazione del Task 005
+
+Il Task 005 non introduce tabelle né migrazioni: `PRAGMA user_version` resta 4.
+Il validatore costruisce a ogni richiesta una fotografia immutabile e
+transitoria contenente riferimenti strutturati a mondo, entità, eventi e
+memorie. La fotografia non viene salvata e non contiene scenario, contenuto
+delle memorie, dati canonici JSON o configurazione AI.
+
+Le proposte validate sono valori tipizzati immutabili. Un dry-run applica le
+sole trasformazioni ammesse a una nuova fotografia in memoria; la fotografia
+originale e tutte le tabelle SQLite restano invariate. Un esito non valido non
+produce alcuna proiezione.
 
 ## Limite temporale delle osservazioni
 

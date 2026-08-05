@@ -21,6 +21,7 @@ from .memories import MemoriaPersonaggio
 from .models import Mondo
 from .paths import database_predefinito
 from .service import ServizioMondi
+from .validation_models import AmbitoValidazione, SeveritaProblema
 from .world_state import EntitaMondo, TIPO_OGGETTO, TIPO_PERSONAGGIO
 
 
@@ -112,6 +113,19 @@ UI_TEXT = {
     "stato_ai_in_corso": "Operazione AI in corso…",
     "stato_ai_occupato": "Attendi il completamento dell'operazione AI in corso.",
     "errore_ai_generico": "L'operazione AI non è riuscita.",
+    "validazione_mondo": "Validazione mondo",
+    "controlla_mondo": "Controlla mondo",
+    "validazione_non_eseguita": "Controllo non ancora eseguito.",
+    "validazione_superata": (
+        "Controllo superato — Errori: {errori} — Avvertimenti: {avvertimenti}"
+    ),
+    "validazione_non_superata": (
+        "Controllo non superato — Errori: {errori} — Avvertimenti: {avvertimenti}"
+    ),
+    "severita_validazione": "Severità",
+    "ambito_validazione": "Ambito",
+    "problema_validazione": "Problema rilevato",
+    "validazione_errore": "Il controllo del mondo non è riuscito.",
 }
 
 
@@ -143,6 +157,26 @@ def etichetta_stato_memoria(effective_status: str) -> str:
         "superseded": "Superata",
     }
     return etichette.get(effective_status, "Stato non riconosciuto")
+
+
+def etichetta_ambito_validazione(ambito: AmbitoValidazione) -> str:
+    etichette = {
+        AmbitoValidazione.INTEGRITA: "Integrità",
+        AmbitoValidazione.SPAZIO: "Spazio",
+        AmbitoValidazione.TEMPO: "Tempo",
+        AmbitoValidazione.INVENTARIO: "Inventario",
+        AmbitoValidazione.EPISTEMICA: "Epistemica",
+    }
+    return etichette[ambito]
+
+
+def etichetta_severita_validazione(severita: SeveritaProblema) -> str:
+    etichette = {
+        SeveritaProblema.ERRORE: "Errore",
+        SeveritaProblema.AVVERTIMENTO: "Avvertimento",
+        SeveritaProblema.INFORMAZIONE: "Informazione",
+    }
+    return etichette[severita]
 
 
 class ApplicazioneHaria:
@@ -238,6 +272,7 @@ class ApplicazioneHaria:
 
         self._costruisci_scheda_stato_mondo()
         self._costruisci_scheda_memorie()
+        self._costruisci_scheda_validazione()
         self._costruisci_scheda_ai()
 
         scheda_cronologia = ttk.Frame(self.schede, padding=10)
@@ -683,6 +718,52 @@ class ApplicazioneHaria:
         )
         self.pulsante_trasferisci.grid(row=0, column=4)
 
+    def _costruisci_scheda_validazione(self) -> None:
+        scheda = ttk.Frame(self.schede, padding=10)
+        self.schede.add(scheda, text=UI_TEXT["validazione_mondo"])
+        scheda.rowconfigure(1, weight=1)
+        scheda.columnconfigure(0, weight=1)
+
+        riepilogo = ttk.Frame(scheda)
+        riepilogo.grid(row=0, column=0, sticky="ew", pady=(0, 8))
+        riepilogo.columnconfigure(0, weight=1)
+        self.etichetta_validazione = ttk.Label(
+            riepilogo, text=UI_TEXT["validazione_non_eseguita"], anchor=tk.W
+        )
+        self.etichetta_validazione.grid(row=0, column=0, sticky="ew")
+        self.pulsante_controlla_mondo = ttk.Button(
+            riepilogo,
+            text=UI_TEXT["controlla_mondo"],
+            command=self._controlla_mondo,
+            state=tk.DISABLED,
+        )
+        self.pulsante_controlla_mondo.grid(row=0, column=1, padx=(12, 0))
+
+        self.albero_validazione = ttk.Treeview(
+            scheda,
+            columns=("severita", "ambito", "messaggio"),
+            show="headings",
+            selectmode="none",
+        )
+        self.albero_validazione.heading(
+            "severita", text=UI_TEXT["severita_validazione"]
+        )
+        self.albero_validazione.heading(
+            "ambito", text=UI_TEXT["ambito_validazione"]
+        )
+        self.albero_validazione.heading(
+            "messaggio", text=UI_TEXT["problema_validazione"]
+        )
+        self.albero_validazione.column("severita", width=120)
+        self.albero_validazione.column("ambito", width=120)
+        self.albero_validazione.column("messaggio", width=700)
+        self.albero_validazione.grid(row=1, column=0, sticky="nsew")
+        scorrimento = ttk.Scrollbar(
+            scheda, orient=tk.VERTICAL, command=self.albero_validazione.yview
+        )
+        scorrimento.grid(row=1, column=1, sticky="ns")
+        self.albero_validazione.configure(yscrollcommand=scorrimento.set)
+
     def _carica_mondo_esistente(self) -> None:
         mondi = self.servizio.elenca_mondi()
         if mondi:
@@ -709,10 +790,57 @@ class ApplicazioneHaria:
         self._aggiorna_cronologia()
         self._aggiorna_stato_mondo()
         self._aggiorna_memorie()
+        self._azzera_validazione()
         self.pulsante_salva.configure(state=tk.NORMAL)
         self.pulsante_esporta.configure(state=tk.NORMAL)
         self.pulsante_ripristina.configure(state=tk.NORMAL)
         self._aggiorna_indicatore_modifiche()
+
+    def _azzera_validazione(self) -> None:
+        for elemento in self.albero_validazione.get_children():
+            self.albero_validazione.delete(elemento)
+        self.etichetta_validazione.configure(
+            text=UI_TEXT["validazione_non_eseguita"]
+        )
+        stato = tk.NORMAL if self.mondo_corrente is not None else tk.DISABLED
+        self.pulsante_controlla_mondo.configure(state=stato)
+
+    def _controlla_mondo(self) -> None:
+        if self.mondo_corrente is None:
+            return
+        try:
+            rapporto = self.servizio.validazione.controlla_mondo(
+                self.mondo_corrente.id
+            )
+        except ErroreHaria as errore:
+            self.etichetta_validazione.configure(
+                text=UI_TEXT["validazione_errore"]
+            )
+            messagebox.showerror(UI_TEXT["errore"], str(errore))
+            return
+        for elemento in self.albero_validazione.get_children():
+            self.albero_validazione.delete(elemento)
+        modello = (
+            UI_TEXT["validazione_superata"]
+            if rapporto.superata
+            else UI_TEXT["validazione_non_superata"]
+        )
+        self.etichetta_validazione.configure(
+            text=modello.format(
+                errori=len(rapporto.errori),
+                avvertimenti=len(rapporto.avvertimenti),
+            )
+        )
+        for problema in rapporto.problemi:
+            self.albero_validazione.insert(
+                "",
+                tk.END,
+                values=(
+                    etichetta_severita_validazione(problema.severita),
+                    etichetta_ambito_validazione(problema.ambito),
+                    problema.messaggio,
+                ),
+            )
 
     def _mostra_impostazioni(self, impostazioni: dict[str, str]) -> None:
         for elemento in self.scheda_impostazioni.winfo_children():

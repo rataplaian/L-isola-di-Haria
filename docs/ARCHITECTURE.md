@@ -41,6 +41,18 @@ Fa avanzare processi fuori scena.
 ### 9. Validatore
 Controlla coerenza spaziale, temporale, epistemica e inventariale.
 
+Nel Task 005, `haria_engine/validation_models.py` definisce fotografie,
+proposte, problemi ed esiti immutabili; `haria_engine/validation.py` costruisce
+la fotografia usando esclusivamente letture tipizzate dell'archivio e offre il
+servizio applicativo; `haria_engine/validation_rules.py` contiene regole pure,
+ordinamento deterministico e proiezioni dry-run in memoria.
+
+Il validatore non riceve connessioni SQLite, non esegue SQL, non chiama API di
+scrittura e non contatta provider AI. La fotografia esclude testo narrativo,
+JSON e cursori del database: contiene soltanto i campi strutturati necessari ai
+controlli. La simulazione restituisce una nuova fotografia e non crea eventi,
+memorie o versioni.
+
 ### 10. Provider LLM
 Interfaccia sostituibile. Prima implementazione: Ollama.
 
@@ -74,7 +86,7 @@ tardivi sono gestiti senza aggiornare widget distrutti.
 La narrazione non è la fonte della verità.
 Il database è la fonte della verità.
 
-## Confini implementati fino al Task 004
+## Confini implementati fino al Task 005
 
 - Il canone originale resta immutabile in `world_entities.canonical_data` e
   nelle fotografie sorgente.
@@ -97,6 +109,11 @@ Il database è la fonte della verità.
 - Il provider Ollama supporta soltanto verifica, elenco modelli e prova
   testuale non streaming. Simulazione e generazione narrativa non sono
   implementate.
+- Il validatore legge canone, stato, eventi e memorie attraverso il servizio
+  applicativo, produce problemi ordinati e può simulare proposte soltanto in
+  memoria. Lo schema SQLite resta alla versione 4.
+- L'audit dalla GUI è manuale: non parte all'avvio e il risultato viene
+  azzerato quando cambia il mondo selezionato.
 
 La GUI legge modelli tipizzati e non accede direttamente a SQL o dati tecnici.
 La vista delle memorie usa query aggregate per fonti ed entità collegate.

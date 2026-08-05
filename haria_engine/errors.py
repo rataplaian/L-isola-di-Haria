@@ -80,3 +80,7 @@ class ErroreLimiteTesto(ErroreProviderAI):
 class ErroreCorpoHTTP(ErroreProviderAI):
     """Il corpo della risposta supera il limite applicativo."""
 
+
+class ErroreValidazione(ErroreHaria):
+    """La fotografia o la richiesta di validazione non può essere elaborata."""
+
