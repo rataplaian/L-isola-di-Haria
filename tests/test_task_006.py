@@ -544,12 +544,17 @@ class TestTask006(unittest.TestCase):
             mondo = servizio.importa_da_cartella(SAMPLE_WORLD)
             prima_ai = servizio.carica_configurazione_ai()
             connessione = servizio.archivio._connessione
+            connessione.execute("PRAGMA foreign_keys = OFF")
+            connessione.execute("DROP TABLE narrative_turn_memories")
+            connessione.execute("DROP TABLE narrative_turn_events")
+            connessione.execute("DROP TABLE narrative_turns")
+            connessione.execute("DROP TABLE narrative_sessions")
             connessione.execute("DROP TABLE media_assets")
             connessione.execute("DROP TABLE canonical_documents")
             connessione.execute("PRAGMA user_version = 4")
             connessione.commit()
         with ServizioMondi(self.database) as servizio:
-            self.assertEqual(5, servizio.archivio._connessione.execute("PRAGMA user_version").fetchone()[0])
+            self.assertEqual(6, servizio.archivio._connessione.execute("PRAGMA user_version").fetchone()[0])
             self.assertEqual(mondo.id, servizio.carica_mondo(mondo.id).id)
             self.assertEqual(prima_ai, servizio.carica_configurazione_ai())
 
@@ -570,11 +575,11 @@ class TestTask006(unittest.TestCase):
         finally:
             connessione.close()
 
-    def test_riapertura_schema_5_idempotente(self) -> None:
+    def test_riapertura_schema_6_idempotente(self) -> None:
         with ServizioMondi(self.database):
             pass
         with ServizioMondi(self.database) as servizio:
-            self.assertEqual(5, servizio.archivio._connessione.execute("PRAGMA user_version").fetchone()[0])
+            self.assertEqual(6, servizio.archivio._connessione.execute("PRAGMA user_version").fetchone()[0])
 
     def test_importazione_non_chiama_ollama(self) -> None:
         class TrasportoVietato:

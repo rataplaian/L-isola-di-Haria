@@ -5,7 +5,7 @@ from __future__ import annotations
 import base64
 import tkinter as tk
 from collections.abc import Callable, Mapping
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
@@ -150,11 +150,12 @@ UI_TEXT = {
     "azione_giocatore": "La tua azione",
     "invia_turno": "Invia",
     "mostra_prompt": "Mostra prompt",
-    "anteprima_narrativa": "Anteprima narrativa: nessuna modifica viene ancora salvata",
+    "anteprima_narrativa": "Partita locale persistente",
     "nessun_mondo_gioco": "Importa o seleziona un mondo prima di giocare.",
     "nessun_modello_gioco": "Seleziona e salva un modello Ollama nelle Impostazioni AI.",
-    "turno_in_corso": "Generazione dell'anteprima narrativa in corso...",
-    "turno_completato": "Anteprima narrativa completata senza modificare il mondo.",
+    "turno_in_corso": "Generazione e verifica del turno in corso...",
+    "turno_completato": "Turno salvato nella partita locale.",
+    "tempo_narrativo": "Tempo narrativo: {valore}",
     "prompt_turno": "Prompt del turno narrativo",
 }
 
@@ -248,6 +249,16 @@ def etichetta_stato_memoria(effective_status: str) -> str:
         "superseded": "Superata",
     }
     return etichette.get(effective_status, "Stato non riconosciuto")
+
+
+def formatta_tempo_narrativo(valore: str) -> str:
+    """Rende un istante ISO leggibile senza esporre dettagli tecnici."""
+
+    try:
+        istante = datetime.fromisoformat(valore)
+    except (TypeError, ValueError):
+        return "non disponibile"
+    return istante.strftime("%d/%m/%Y alle %H:%M (%z)")
 
 
 def etichetta_ambito_validazione(ambito: AmbitoValidazione) -> str:
@@ -647,7 +658,7 @@ class ApplicazioneHaria:
             raise ErroreHaria(UI_TEXT["nessun_mondo_gioco"])
         testo = self.input_narrativo.get("1.0", tk.END).strip()
         return self.servizio.narrativa.prepara_turno(
-            self.mondo_corrente.id, testo, tuple(self._cronologia_narrativa)
+            self.mondo_corrente.id, testo
         )
 
     def _invia_turno_narrativo(self) -> None:
@@ -705,11 +716,28 @@ class ApplicazioneHaria:
         self.input_narrativo.delete("1.0", tk.END)
         self.etichetta_stato_gioco.configure(text="")
 
-    def _aggiungi_conversazione(self, utente: str, narratore: str) -> None:
-        self._cronologia_narrativa.extend(
-            (f"Utente: {utente}", f"Narratore: {narratore}")
-        )
-        self._cronologia_narrativa[:] = self._cronologia_narrativa[-20:]
+    def _carica_conversazione_narrativa(self) -> None:
+        if self.mondo_corrente is None:
+            self._cronologia_narrativa.clear()
+        else:
+            partita = self.servizio.narrativa.carica_partita(
+                self.mondo_corrente.id, limite_turni=100
+            )
+            self._cronologia_narrativa = [
+                messaggio
+                for turno in partita.turni
+                for messaggio in (
+                    f"Utente: {turno.user_input}",
+                    f"Narratore: {turno.narrative}",
+                )
+            ]
+            self.etichetta_stato_gioco.configure(
+                text=UI_TEXT["tempo_narrativo"].format(
+                    valore=formatta_tempo_narrativo(
+                        partita.sessione.current_time
+                    )
+                )
+            )
         self.conversazione_narrativa.configure(state=tk.NORMAL)
         self.conversazione_narrativa.delete("1.0", tk.END)
         self.conversazione_narrativa.insert(
@@ -797,8 +825,10 @@ class ApplicazioneHaria:
 
     def _elabora_esiti_ai(self) -> None:
         for esito in self._coordinatore_ai.raccogli():
-            self._imposta_controlli_rete_ai(True)
-            self._mostra_esito_ai(esito)
+            try:
+                self._mostra_esito_ai(esito)
+            finally:
+                self._imposta_controlli_rete_ai(True)
 
     def _mostra_esito_ai(self, esito: EsitoAsincrono[object]) -> None:
         if esito.operazione == "turno_narrativo":
@@ -866,25 +896,47 @@ class ApplicazioneHaria:
             self.etichetta_stato_gioco.configure(text=UI_TEXT["errore_ai_generico"])
             return
         try:
-            proposta = self.servizio.narrativa.valida_risposta(
-                turno,
-                esito.risultato.contenuto,
-                datetime.now(timezone.utc),
+            persistito = self.servizio.narrativa.salva_risposta_turno(
+                turno, esito.risultato.contenuto
             )
         except ErroreHaria as errore:
             self.etichetta_stato_gioco.configure(text=str(errore))
             messagebox.showerror(UI_TEXT["errore"], str(errore))
             return
-        self._aggiungi_conversazione(turno.user_input, proposta.narrative)
+        self._carica_conversazione_narrativa()
         self.input_narrativo.delete("1.0", tk.END)
-        self.etichetta_stato_gioco.configure(text=UI_TEXT["turno_completato"])
+        self._aggiorna_stato_mondo()
+        self._aggiorna_memorie()
+        self.etichetta_stato_gioco.configure(
+            text=(
+                UI_TEXT["turno_completato"]
+                + " "
+                + UI_TEXT["tempo_narrativo"].format(
+                    valore=formatta_tempo_narrativo(
+                        persistito.world_time_after
+                    )
+                )
+            )
+        )
 
     def _imposta_controlli_rete_ai(self, abilitati: bool) -> None:
         stato = tk.NORMAL if abilitati else tk.DISABLED
         for pulsante in self._pulsanti_rete_ai:
             pulsante.configure(state=stato)
+        for nome in (
+            "pulsante_importa_cartella",
+            "pulsante_importa_zip",
+            "pulsante_salva",
+            "pulsante_ripristina",
+            "pulsante_trasferisci",
+        ):
+            controllo = getattr(self, nome, None)
+            if controllo is not None:
+                controllo.configure(state=stato)
         if abilitati and self.mondo_corrente is None:
             self.pulsante_invia_turno.configure(state=tk.DISABLED)
+        if abilitati and self.mondo_corrente is not None:
+            self._aggiorna_stato_mondo()
 
     def _costruisci_scheda_memorie(self) -> None:
         scheda = ttk.Frame(self.schede, padding=10)
@@ -1141,6 +1193,7 @@ class ApplicazioneHaria:
         self._aggiorna_stato_mondo()
         self._aggiorna_memorie()
         self._aggiorna_pacchetto_completo()
+        self._carica_conversazione_narrativa()
         self._azzera_validazione()
         self.pulsante_salva.configure(state=tk.NORMAL)
         self.pulsante_esporta.configure(state=tk.NORMAL)

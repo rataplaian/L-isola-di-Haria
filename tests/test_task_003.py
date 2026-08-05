@@ -38,6 +38,10 @@ def riduci_a_schema_2(database: Path) -> None:
     connessione = sqlite3.connect(database)
     try:
         connessione.execute("PRAGMA foreign_keys = OFF")
+        connessione.execute("DROP TABLE narrative_turn_memories")
+        connessione.execute("DROP TABLE narrative_turn_events")
+        connessione.execute("DROP TABLE narrative_turns")
+        connessione.execute("DROP TABLE narrative_sessions")
         connessione.execute("DROP TABLE media_assets")
         connessione.execute("DROP TABLE canonical_documents")
         connessione.execute("DROP TABLE ai_settings")
@@ -88,7 +92,7 @@ class TestMigrazioneSchema3(unittest.TestCase):
                 "PRAGMA user_version"
             ).fetchone()[0]
 
-        self.assertEqual(5, versione)
+            self.assertEqual(6, versione)
         self.assertEqual("Scenario conservato", mondo.scenario)
         self.assertEqual(4, len(memorie))
 

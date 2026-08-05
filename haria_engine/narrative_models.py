@@ -29,6 +29,7 @@ class MemoriaCandidata:
     associated_emotion: str | None
     entities: tuple[AssociazioneMemoriaCandidata, ...] = ()
     source_memory_ids: tuple[str, ...] = ()
+    operation_index: int | None = None
 
 
 @dataclass(frozen=True, slots=True)

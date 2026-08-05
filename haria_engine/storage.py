@@ -21,6 +21,7 @@ from .errors import (
     ErroreMemoria,
     ErroreMigrazione,
     ErroreStatoMondo,
+    ErroreTurnoNarrativo,
     MondoNonTrovato,
 )
 from .memories import (
@@ -32,6 +33,12 @@ from .memories import (
     importa_conoscenze_iniziali,
 )
 from .models import FileSorgente, Mondo, VersioneMondo
+from .narrative_history import SessioneNarrativa, TurnoNarrativoPersistito
+from .narrative_persistence import (
+    PianoPersistenzaTurno,
+    TurnoDaPersistire,
+    crea_id_sessione,
+)
 from .package_models import DocumentoCanonico, MediaCanonico
 from .world_state import (
     AggiornamentoStato,
@@ -94,7 +101,10 @@ class ArchivioSQLite:
         if versione == 4:
             self._migra_da_4_a_5()
             versione = 5
-        if versione != 5:
+        if versione == 5:
+            self._migra_da_5_a_6()
+            versione = 6
+        if versione != 6:
             raise ErroreMigrazione(
                 f"La versione schema {versione} del database non è supportata."
             )
@@ -413,6 +423,161 @@ class ArchivioSQLite:
             raise ErroreMigrazione(
                 "La migrazione allo schema 5 non è riuscita; il database è "
                 "rimasto allo schema 4 senza dati parziali."
+            ) from errore
+
+    def _migra_da_5_a_6(self) -> None:
+        """Aggiunge cronologia e collegamenti dei turni in una transazione."""
+
+        istruzioni = (
+            """
+                CREATE TABLE narrative_sessions (
+                    session_id TEXT PRIMARY KEY,
+                    world_id TEXT NOT NULL UNIQUE,
+                    current_time TEXT NOT NULL,
+                    next_turn_number INTEGER NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    UNIQUE (session_id, world_id),
+                    FOREIGN KEY (world_id) REFERENCES worlds(id) ON DELETE RESTRICT,
+                    CHECK (typeof(next_turn_number) = 'integer' AND next_turn_number >= 1)
+                )
+            """,
+            """
+                CREATE TABLE narrative_turns (
+                    turn_id TEXT PRIMARY KEY,
+                    session_id TEXT NOT NULL,
+                    world_id TEXT NOT NULL,
+                    sequence_number INTEGER NOT NULL,
+                    user_input TEXT NOT NULL,
+                    narrative TEXT NOT NULL,
+                    elapsed_minutes INTEGER NOT NULL,
+                    world_time_before TEXT NOT NULL,
+                    world_time_after TEXT NOT NULL,
+                    prompt_text TEXT NOT NULL,
+                    raw_model_output TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    UNIQUE (session_id, sequence_number),
+                    UNIQUE (turn_id, world_id),
+                    FOREIGN KEY (session_id, world_id)
+                        REFERENCES narrative_sessions(session_id, world_id)
+                        ON DELETE RESTRICT,
+                    CHECK (typeof(sequence_number) = 'integer' AND sequence_number >= 1),
+                    CHECK (
+                        typeof(elapsed_minutes) = 'integer'
+                        AND elapsed_minutes BETWEEN 0 AND 10080
+                    )
+                )
+            """,
+            """
+                CREATE TABLE narrative_turn_events (
+                    turn_id TEXT NOT NULL,
+                    event_id TEXT NOT NULL,
+                    world_id TEXT NOT NULL,
+                    operation_index INTEGER NOT NULL,
+                    PRIMARY KEY (turn_id, event_id),
+                    UNIQUE (turn_id, operation_index),
+                    FOREIGN KEY (turn_id, world_id)
+                        REFERENCES narrative_turns(turn_id, world_id)
+                        ON DELETE RESTRICT,
+                    FOREIGN KEY (event_id, world_id)
+                        REFERENCES events(event_id, world_id)
+                        ON DELETE RESTRICT,
+                    CHECK (operation_index >= 0)
+                )
+            """,
+            """
+                CREATE TABLE narrative_turn_memories (
+                    turn_id TEXT NOT NULL,
+                    memory_id TEXT NOT NULL,
+                    world_id TEXT NOT NULL,
+                    memory_index INTEGER NOT NULL,
+                    PRIMARY KEY (turn_id, memory_id),
+                    UNIQUE (turn_id, memory_index),
+                    FOREIGN KEY (turn_id, world_id)
+                        REFERENCES narrative_turns(turn_id, world_id)
+                        ON DELETE RESTRICT,
+                    FOREIGN KEY (memory_id, world_id)
+                        REFERENCES memories(memory_id, world_id)
+                        ON DELETE RESTRICT,
+                    CHECK (memory_index >= 0)
+                )
+            """,
+            """
+                CREATE INDEX idx_narrative_turns_session
+                    ON narrative_turns(session_id, sequence_number)
+            """,
+            """
+                CREATE INDEX idx_narrative_turn_events_turn
+                    ON narrative_turn_events(turn_id, operation_index)
+            """,
+            """
+                CREATE INDEX idx_narrative_turn_memories_turn
+                    ON narrative_turn_memories(turn_id, memory_index)
+            """,
+            """
+                CREATE TRIGGER narrative_sessions_identity_immutable
+                BEFORE UPDATE ON narrative_sessions
+                WHEN NEW.session_id <> OLD.session_id
+                  OR NEW.world_id <> OLD.world_id
+                  OR NEW.created_at <> OLD.created_at
+                BEGIN
+                    SELECT RAISE(ABORT, 'Identità della sessione narrativa immutabile.');
+                END
+            """,
+            """
+                CREATE TRIGGER narrative_turns_append_only_update
+                BEFORE UPDATE ON narrative_turns
+                BEGIN
+                    SELECT RAISE(ABORT, 'Turni narrativi immutabili: aggiornamento vietato.');
+                END
+            """,
+            """
+                CREATE TRIGGER narrative_turns_append_only_delete
+                BEFORE DELETE ON narrative_turns
+                BEGIN
+                    SELECT RAISE(ABORT, 'Turni narrativi immutabili: cancellazione vietata.');
+                END
+            """,
+            """
+                CREATE TRIGGER narrative_turn_events_append_only_update
+                BEFORE UPDATE ON narrative_turn_events
+                BEGIN
+                    SELECT RAISE(ABORT, 'Collegamenti turno-evento immutabili.');
+                END
+            """,
+            """
+                CREATE TRIGGER narrative_turn_events_append_only_delete
+                BEFORE DELETE ON narrative_turn_events
+                BEGIN
+                    SELECT RAISE(ABORT, 'Collegamenti turno-evento non cancellabili.');
+                END
+            """,
+            """
+                CREATE TRIGGER narrative_turn_memories_append_only_update
+                BEFORE UPDATE ON narrative_turn_memories
+                BEGIN
+                    SELECT RAISE(ABORT, 'Collegamenti turno-memoria immutabili.');
+                END
+            """,
+            """
+                CREATE TRIGGER narrative_turn_memories_append_only_delete
+                BEFORE DELETE ON narrative_turn_memories
+                BEGIN
+                    SELECT RAISE(ABORT, 'Collegamenti turno-memoria non cancellabili.');
+                END
+            """,
+        )
+        self._connessione.execute("BEGIN IMMEDIATE")
+        try:
+            for istruzione in istruzioni:
+                self._connessione.execute(istruzione)
+            self._connessione.execute("PRAGMA user_version = 6")
+            self._connessione.commit()
+        except sqlite3.Error as errore:
+            self._connessione.rollback()
+            raise ErroreMigrazione(
+                "La migrazione allo schema 6 non è riuscita; il database è "
+                "rimasto allo schema 5 senza dati parziali."
             ) from errore
 
     def _migra_da_2_a_3(self) -> None:
@@ -1018,10 +1183,18 @@ class ArchivioSQLite:
         self.carica_mondo(mondo_id)
         righe = self._connessione.execute(
             """
-            SELECT event_id, world_id, event_type, occurred_at, actor_id,
-                   target_id, location_id, payload, reason, created_at
-            FROM events WHERE world_id = ?
-            ORDER BY occurred_at, created_at, event_id
+            SELECT e.event_id, e.world_id, e.event_type, e.occurred_at,
+                   e.actor_id, e.target_id, e.location_id, e.payload,
+                   e.reason, e.created_at
+            FROM events AS e
+            LEFT JOIN narrative_turn_events AS nte
+              ON nte.world_id = e.world_id AND nte.event_id = e.event_id
+            LEFT JOIN narrative_turns AS nt
+              ON nt.world_id = nte.world_id AND nt.turn_id = nte.turn_id
+            WHERE e.world_id = ?
+            ORDER BY e.occurred_at, e.created_at,
+                     CASE WHEN nte.turn_id IS NULL THEN 1 ELSE 0 END,
+                     nt.sequence_number, nte.operation_index, e.event_id
             """,
             (mondo_id,),
         ).fetchall()
@@ -1053,6 +1226,10 @@ class ArchivioSQLite:
                    e.actor_id, e.target_id, e.location_id, e.payload,
                    e.reason, e.created_at
             FROM events AS e
+            LEFT JOIN narrative_turn_events AS nte
+              ON nte.world_id = e.world_id AND nte.event_id = e.event_id
+            LEFT JOIN narrative_turns AS nt
+              ON nt.world_id = nte.world_id AND nt.turn_id = nte.turn_id
             WHERE e.world_id = ?
               AND EXISTS (
                   SELECT 1
@@ -1061,7 +1238,9 @@ class ArchivioSQLite:
                     AND ee.world_id = e.world_id
                     AND ee.entity_id = ?
               )
-            ORDER BY e.occurred_at, e.created_at, e.event_id
+            ORDER BY e.occurred_at, e.created_at,
+                     CASE WHEN nte.turn_id IS NULL THEN 1 ELSE 0 END,
+                     nt.sequence_number, nte.operation_index, e.event_id
             """,
             (mondo_id, entity_id),
         ).fetchall()
@@ -1253,8 +1432,14 @@ class ArchivioSQLite:
             LEFT JOIN world_entities AS fonte
               ON fonte.world_id = m.world_id
              AND fonte.entity_id = m.source_entity_id
+            LEFT JOIN narrative_turn_memories AS ntm
+              ON ntm.world_id = m.world_id AND ntm.memory_id = m.memory_id
+            LEFT JOIN narrative_turns AS nt
+              ON nt.world_id = ntm.world_id AND nt.turn_id = ntm.turn_id
             WHERE {condizione}
-            ORDER BY m.learned_at, m.created_at, m.memory_id
+            ORDER BY m.learned_at, m.created_at,
+                     CASE WHEN ntm.turn_id IS NULL THEN 1 ELSE 0 END,
+                     nt.sequence_number, ntm.memory_index, m.memory_id
             """,
             parametri,
         ).fetchall()
@@ -1430,6 +1615,363 @@ class ArchivioSQLite:
                 (evento.event_id, evento.world_id, entity_id, ruolo)
                 for entity_id, ruolo in sorted(associazioni)
             ),
+        )
+
+    def carica_sessione_narrativa(
+        self, mondo_id: str
+    ) -> SessioneNarrativa | None:
+        self.carica_mondo(mondo_id)
+        riga = self._connessione.execute(
+            """
+            SELECT session_id, world_id,
+                   narrative_sessions.current_time AS current_time,
+                   next_turn_number,
+                   created_at, updated_at
+            FROM narrative_sessions WHERE world_id = ?
+            """,
+            (mondo_id,),
+        ).fetchone()
+        return None if riga is None else self._sessione_narrativa_da_riga(riga)
+
+    def ottieni_o_crea_sessione_narrativa(
+        self,
+        mondo_id: str,
+        tempo_iniziale: str,
+        creata_il: str,
+    ) -> SessioneNarrativa:
+        self.carica_mondo(mondo_id)
+        try:
+            self._connessione.execute("BEGIN IMMEDIATE")
+            riga = self._connessione.execute(
+                """
+                SELECT session_id, world_id,
+                       narrative_sessions.current_time AS current_time,
+                       next_turn_number,
+                       created_at, updated_at
+                FROM narrative_sessions WHERE world_id = ?
+                """,
+                (mondo_id,),
+            ).fetchone()
+            if riga is None:
+                self._connessione.execute(
+                    """
+                    INSERT INTO narrative_sessions (
+                        session_id, world_id, current_time, next_turn_number,
+                        created_at, updated_at
+                    ) VALUES (?, ?, ?, 1, ?, ?)
+                    """,
+                    (
+                        crea_id_sessione(mondo_id),
+                        mondo_id,
+                        tempo_iniziale,
+                        creata_il,
+                        creata_il,
+                    ),
+                )
+                riga = self._connessione.execute(
+                    """
+                    SELECT session_id, world_id,
+                           narrative_sessions.current_time AS current_time,
+                           next_turn_number,
+                           created_at, updated_at
+                    FROM narrative_sessions WHERE world_id = ?
+                    """,
+                    (mondo_id,),
+                ).fetchone()
+            self._connessione.commit()
+        except sqlite3.Error as errore:
+            self._connessione.rollback()
+            raise ErroreTurnoNarrativo(
+                "Non è stato possibile aprire la partita locale persistente."
+            ) from errore
+        assert riga is not None
+        return self._sessione_narrativa_da_riga(riga)
+
+    def elenca_turni_narrativi(
+        self, mondo_id: str, *, limite: int | None = None
+    ) -> list[TurnoNarrativoPersistito]:
+        sessione = self.carica_sessione_narrativa(mondo_id)
+        if sessione is None:
+            return []
+        if limite is not None and (
+            isinstance(limite, bool) or not isinstance(limite, int) or limite < 1
+        ):
+            raise ErroreTurnoNarrativo(
+                "Il limite della cronologia narrativa deve essere positivo."
+            )
+        if limite is None:
+            righe = self._connessione.execute(
+                """
+                SELECT * FROM narrative_turns
+                WHERE session_id = ?
+                ORDER BY sequence_number
+                """,
+                (sessione.session_id,),
+            ).fetchall()
+        else:
+            righe = self._connessione.execute(
+                """
+                SELECT * FROM (
+                    SELECT * FROM narrative_turns
+                    WHERE session_id = ?
+                    ORDER BY sequence_number DESC LIMIT ?
+                ) ORDER BY sequence_number
+                """,
+                (sessione.session_id, limite),
+            ).fetchall()
+        return [self._turno_narrativo_da_riga(riga) for riga in righe]
+
+    def applica_piano_turno_narrativo(
+        self, piano: PianoPersistenzaTurno
+    ) -> TurnoNarrativoPersistito:
+        """Applica turno, eventi, stato e memorie come un'unica unità atomica."""
+
+        turno = piano.turno
+        try:
+            self._connessione.execute("BEGIN IMMEDIATE")
+            sessione = self._connessione.execute(
+                """
+                SELECT narrative_sessions.current_time AS current_time,
+                       next_turn_number FROM narrative_sessions
+                WHERE session_id = ? AND world_id = ?
+                """,
+                (turno.session_id, turno.world_id),
+            ).fetchone()
+            if sessione is None:
+                raise sqlite3.IntegrityError("Sessione narrativa inesistente.")
+            if (
+                sessione["current_time"] != turno.world_time_before
+                or int(sessione["next_turn_number"]) != turno.sequence_number
+            ):
+                raise sqlite3.IntegrityError("Sessione narrativa non aggiornata.")
+
+            self._connessione.execute(
+                """
+                INSERT INTO narrative_turns (
+                    turn_id, session_id, world_id, sequence_number, user_input,
+                    narrative, elapsed_minutes, world_time_before,
+                    world_time_after, prompt_text, raw_model_output, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    turno.turn_id,
+                    turno.session_id,
+                    turno.world_id,
+                    turno.sequence_number,
+                    turno.user_input,
+                    turno.narrative,
+                    turno.elapsed_minutes,
+                    turno.world_time_before,
+                    turno.world_time_after,
+                    turno.prompt_text,
+                    turno.raw_model_output,
+                    turno.created_at,
+                ),
+            )
+
+            for evento in piano.eventi:
+                try:
+                    payload = _deserializza_oggetto(evento.payload_json)
+                except (json.JSONDecodeError, ValueError) as errore:
+                    raise sqlite3.IntegrityError(
+                        "Il payload dell'evento non è valido."
+                    ) from errore
+                evento_mondo = EventoMondo(
+                    event_id=evento.event_id,
+                    world_id=turno.world_id,
+                    event_type=evento.event_type,
+                    occurred_at=evento.occurred_at,
+                    actor_id=evento.actor_id,
+                    target_id=evento.target_id,
+                    location_id=evento.location_id,
+                    payload=payload,
+                    reason=evento.reason,
+                    created_at=turno.created_at,
+                )
+                self._inserisci_evento(
+                    evento_mondo, evento.affected_entity_ids
+                )
+                self._connessione.execute(
+                    """
+                    INSERT INTO narrative_turn_events (
+                        turn_id, event_id, world_id, operation_index
+                    ) VALUES (?, ?, ?, ?)
+                    """,
+                    (
+                        turno.turn_id,
+                        evento.event_id,
+                        turno.world_id,
+                        evento.operation_index,
+                    ),
+                )
+
+            for aggiornamento in piano.aggiornamenti:
+                risultato = self._connessione.execute(
+                    """
+                    UPDATE entity_state
+                    SET current_status = ?, location_id = ?, holder_id = ?,
+                        accessibility = ?, condition = ?, version = ?, updated_at = ?
+                    WHERE world_id = ? AND entity_id = ? AND version = ?
+                    """,
+                    (
+                        aggiornamento.status,
+                        aggiornamento.location_id,
+                        aggiornamento.holder_id,
+                        int(aggiornamento.accessibility),
+                        aggiornamento.condition,
+                        aggiornamento.final_version,
+                        turno.created_at,
+                        turno.world_id,
+                        aggiornamento.entity_id,
+                        aggiornamento.expected_version,
+                    ),
+                )
+                if risultato.rowcount != 1:
+                    raise sqlite3.IntegrityError(
+                        "Lo stato corrente è cambiato durante il turno."
+                    )
+
+            for memoria in piano.memorie:
+                self._inserisci_memoria(
+                    MemoriaDaSalvare(
+                        memory_id=memoria.memory_id,
+                        world_id=turno.world_id,
+                        character_id=memoria.character_id,
+                        event_id=memoria.event_id,
+                        knowledge_type=memoria.knowledge_type,
+                        source_type=memoria.source_type,
+                        source_entity_id=memoria.source_entity_id,
+                        learned_at=memoria.learned_at,
+                        certainty=memoria.certainty,
+                        content=memoria.content,
+                        interpretation=memoria.interpretation,
+                        associated_emotion=memoria.associated_emotion,
+                        status="active",
+                        supersedes_memory_id=None,
+                        created_at=turno.created_at,
+                    )
+                )
+                self._connessione.executemany(
+                    """
+                    INSERT INTO memory_entities (
+                        memory_id, world_id, entity_id, role
+                    ) VALUES (?, ?, ?, ?)
+                    """,
+                    (
+                        (memoria.memory_id, turno.world_id, entity_id, ruolo)
+                        for entity_id, ruolo in memoria.entity_roles
+                    ),
+                )
+                self._connessione.executemany(
+                    """
+                    INSERT INTO memory_sources (
+                        memory_id, source_memory_id, world_id,
+                        character_id, position
+                    ) VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (
+                        (
+                            memoria.memory_id,
+                            source_id,
+                            turno.world_id,
+                            memoria.character_id,
+                            posizione,
+                        )
+                        for posizione, source_id in enumerate(
+                            memoria.source_memory_ids, start=1
+                        )
+                    ),
+                )
+                self._connessione.execute(
+                    """
+                    INSERT INTO narrative_turn_memories (
+                        turn_id, memory_id, world_id, memory_index
+                    ) VALUES (?, ?, ?, ?)
+                    """,
+                    (
+                        turno.turn_id,
+                        memoria.memory_id,
+                        turno.world_id,
+                        memoria.memory_index,
+                    ),
+                )
+
+            aggiornata = self._connessione.execute(
+                """
+                UPDATE narrative_sessions
+                SET "current_time" = ?, next_turn_number = ?, updated_at = ?
+                WHERE session_id = ? AND world_id = ?
+                  AND narrative_sessions.current_time = ?
+                  AND next_turn_number = ?
+                """,
+                (
+                    turno.world_time_after,
+                    turno.sequence_number + 1,
+                    turno.created_at,
+                    turno.session_id,
+                    turno.world_id,
+                    turno.world_time_before,
+                    turno.sequence_number,
+                ),
+            )
+            if aggiornata.rowcount != 1:
+                raise sqlite3.IntegrityError(
+                    "La sessione narrativa è cambiata durante il turno."
+                )
+            self._connessione.commit()
+        except (sqlite3.Error, ValueError) as errore:
+            self._connessione.rollback()
+            raise ErroreTurnoNarrativo(
+                "Il turno non è stato salvato: conversazione, tempo, eventi, "
+                "stato e memorie sono rimasti invariati."
+            ) from errore
+        return self._turno_narrativo_da_valore(turno)
+
+    @staticmethod
+    def _sessione_narrativa_da_riga(riga: sqlite3.Row) -> SessioneNarrativa:
+        return SessioneNarrativa(
+            session_id=riga["session_id"],
+            world_id=riga["world_id"],
+            current_time=riga["current_time"],
+            next_turn_number=int(riga["next_turn_number"]),
+            created_at=riga["created_at"],
+            updated_at=riga["updated_at"],
+        )
+
+    @staticmethod
+    def _turno_narrativo_da_riga(riga: sqlite3.Row) -> TurnoNarrativoPersistito:
+        return TurnoNarrativoPersistito(
+            turn_id=riga["turn_id"],
+            session_id=riga["session_id"],
+            world_id=riga["world_id"],
+            sequence_number=int(riga["sequence_number"]),
+            user_input=riga["user_input"],
+            narrative=riga["narrative"],
+            elapsed_minutes=int(riga["elapsed_minutes"]),
+            world_time_before=riga["world_time_before"],
+            world_time_after=riga["world_time_after"],
+            prompt_text=riga["prompt_text"],
+            raw_model_output=riga["raw_model_output"],
+            created_at=riga["created_at"],
+        )
+
+    @staticmethod
+    def _turno_narrativo_da_valore(
+        turno: TurnoDaPersistire,
+    ) -> TurnoNarrativoPersistito:
+        return TurnoNarrativoPersistito(
+            turn_id=turno.turn_id,
+            session_id=turno.session_id,
+            world_id=turno.world_id,
+            sequence_number=turno.sequence_number,
+            user_input=turno.user_input,
+            narrative=turno.narrative,
+            elapsed_minutes=turno.elapsed_minutes,
+            world_time_before=turno.world_time_before,
+            world_time_after=turno.world_time_after,
+            prompt_text=turno.prompt_text,
+            raw_model_output=turno.raw_model_output,
+            created_at=turno.created_at,
         )
 
     def file_sorgente(self, mondo_id: str) -> list[FileSorgente]:

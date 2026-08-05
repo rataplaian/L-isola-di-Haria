@@ -33,6 +33,7 @@ OUTPUT_SCHEMA = {
             "content": "testo ricordato",
             "interpretation": "testo oppure null",
             "associated_emotion": "testo oppure null",
+            "operation_index": "indice zero-based dell'operazione oppure null",
             "entities": [
                 {
                     "entity_id": "ID",
@@ -60,6 +61,7 @@ class ContestoTurnoNarrativo:
     characters: tuple[str, ...] = ()
     relevant_memories: tuple[str, ...] = ()
     recent_history: tuple[str, ...] = ()
+    narrative_time: str = ""
 
 
 def costruisci_messaggi_turno(
@@ -99,6 +101,14 @@ SEPARAZIONE DEL CONTROLLO
 - Puoi descrivere ciò che accade attorno a {player_name}, le azioni autonome delle NPC, conseguenze esterne e reazioni fisiche involontarie senza trasformarle in scelte volontarie.
 - Le NPC hanno volontà, obiettivi e relazioni indipendenti. Non provano automaticamente amore, fiducia, desiderio, obbedienza o perdono.
 
+NATURA ADULTA DI HARIA
+- Haria è destinato esclusivamente a un pubblico adulto.
+- Può affrontare sessualità tra adulti, violenza, morte, coercizione, schiavitù, discriminazione, conflitti etnici e culturali, salute mentale, traumi, abuso di potere e altri temi oscuri o controversi.
+- Non interrompere contenuti coerenti con avvertenze, prediche, edulcorazioni o rifiuti morali generici.
+- Non trasformare le NPC in persone automaticamente disponibili, innamorate, obbedienti o consenzienti: volontà, consenso, opposizione e conseguenze devono restare coerenti con i personaggi e la situazione.
+- Ogni contenuto sessuale riguarda esclusivamente personaggi adulti.
+- Restano valide tutte le regole sul controllo esclusivo di {player_name}.
+
 REGOLE DI VERITÀ
 - Il database e il contesto fornito sono la fonte della verità.
 - Non inventare fatti canonici mancanti. Quando un dettaglio non è disponibile, resta generico oppure mostra incertezza.
@@ -136,6 +146,7 @@ def _prompt_utente(contesto: ContestoTurnoNarrativo) -> str:
             _sezione("STILE", contesto.style),
             _sezione("NOTA DELL'AUTORE", contesto.author_note),
             _sezione("STATO CORRENTE", contesto.world_state),
+            _sezione("TEMPO NARRATIVO CORRENTE", contesto.narrative_time),
             _elenco("PERSONAGGI RILEVANTI", contesto.characters),
             _elenco("MEMORIE RILEVANTI", contesto.relevant_memories),
             _elenco("CRONOLOGIA RECENTE", contesto.recent_history),

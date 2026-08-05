@@ -95,6 +95,21 @@ Risultati:
 - risposta tardiva ignorata dopo la chiusura;
 - nessuna rete reale durante i test.
 
-La suite Task 001–007 contiene **237 test automatici** e usa soltanto database,
+## Test 10 — Turni persistenti e atomici
+
+Preparare turni senza operazioni, con cambi di stato, eventi e memorie.
+
+Risultati:
+- migrazione 5→6 atomica e senza perdita;
+- una sessione e una cronologia per mondo;
+- prompt e output grezzo conservati localmente;
+- tempo, eventi, stato e memorie applicati insieme;
+- errore intermedio, versione obsoleta o memoria invalida annullano tutto;
+- conversazione e tempo disponibili dopo riavvio;
+- archivio completo e prompt limitato agli ultimi venti messaggi;
+- testo UTF-8 conservato senza blacklist o trasformazioni;
+- nessuna rete reale nei test.
+
+La suite Task 001–008 contiene **275 test automatici** e usa soltanto database,
 cartelle, ZIP e media tecnici temporanei. I materiali reali locali non sono
 fixture automatiche.

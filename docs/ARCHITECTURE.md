@@ -51,11 +51,18 @@ del prompt senza SQL nella GUI. `narrative_prompt.py` produce esattamente i due
 messaggi mostrabili e inviabili; `narrative_parser.py` converte la risposta JSON
 in proposte immutabili.
 
+Nel Task 008, `narrative_history.py` espone sessioni e turni persistiti come
+modelli immutabili, mentre `narrative_persistence.py` costruisce il piano puro
+del turno. `storage.py` applica turno, eventi, associazioni, stato, memorie e
+avanzamento temporale in una sola transazione SQLite. Esiste una sola
+cronologia per mondo; la GUI rilegge la conversazione dal database e non ne
+mantiene una seconda fonte di verità.
+
 La GUI prepara il contesto nel thread principale, affida al worker soltanto
 `/api/chat` e valida la risposta nel thread principale. Il dry-run usa
 `ServizioValidazione.valida_sequenza`; un errore impedisce di mostrare il testo
-come turno riuscito. Anche in caso di successo non viene invocata alcuna API di
-scrittura.
+come turno riuscito. In caso di successo il piano viene applicato dall'unica
+API atomica dell'archivio e la GUI rilegge i dati soltanto dopo il commit.
 
 ### 8. Motore di simulazione
 Fa avanzare processi fuori scena.
@@ -110,7 +117,7 @@ tardivi sono gestiti senza aggiornare widget distrutti.
 La narrazione non è la fonte della verità.
 Il database è la fonte della verità.
 
-## Confini implementati fino al Task 007
+## Confini implementati fino al Task 008
 
 - Il canone originale resta immutabile in `world_entities.canonical_data` e
   nelle fotografie sorgente.
@@ -146,8 +153,10 @@ Il database è la fonte della verità.
 - Le schede Personaggi, Lore, Regole e stile e Media leggono modelli tipizzati,
   non mostrano JSON o ID e usano un fallback italiano per anteprime non native.
 - La scheda Gioca mostra soltanto input utente e prosa validata. Il prompt
-  effettivo è ispezionabile separatamente; la cronologia è limitata a venti
-  messaggi e vive soltanto in memoria.
+  effettivo è ispezionabile separatamente; la vista carica al massimo cento
+  turni e il prompt gli ultimi venti messaggi, mentre l'archivio conserva tutto.
+- Il motore non aggiunge moderazione narrativa, blacklist o filtri tematici.
+  Non sono ancora attive ricerca semantica o simulazione fuori scena.
 
 La GUI legge modelli tipizzati e non accede direttamente a SQL o dati tecnici.
 La vista delle memorie usa query aggregate per fonti ed entità collegate.
