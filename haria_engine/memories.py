@@ -118,22 +118,45 @@ def importa_conoscenze_iniziali(
         for file in file_sorgente
     }
     contenuto = fotografie.get("characters.json")
-    if contenuto is None:
-        raise ErroreImportazione(
-            "Manca il file archiviato characters.json necessario per importare le conoscenze."
+    if contenuto is not None:
+        try:
+            personaggi = json.loads(contenuto.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as errore:
+            raise ErroreImportazione(
+                "Il file archiviato characters.json non contiene dati validi in UTF-8."
+            ) from errore
+        if not isinstance(personaggi, list) or any(
+            not isinstance(personaggio, dict) for personaggio in personaggi
+        ):
+            raise ErroreImportazione(
+                "Il file archiviato characters.json deve contenere un elenco valido."
+            )
+    else:
+        personaggi = []
+        percorsi = sorted(
+            (
+                percorso for percorso in fotografie
+                if percorso.startswith("characters/")
+                and percorso.casefold().endswith(".json")
+            ),
+            key=str.casefold,
         )
-    try:
-        personaggi = json.loads(contenuto.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError) as errore:
-        raise ErroreImportazione(
-            "Il file archiviato characters.json non contiene dati validi in UTF-8."
-        ) from errore
-    if not isinstance(personaggi, list) or any(
-        not isinstance(personaggio, dict) for personaggio in personaggi
-    ):
-        raise ErroreImportazione(
-            "Il file archiviato characters.json deve contenere un elenco valido."
-        )
+        if not percorsi:
+            raise ErroreImportazione(
+                "Il pacchetto non contiene personaggi per importare le conoscenze."
+            )
+        for percorso in percorsi:
+            try:
+                personaggio = json.loads(fotografie[percorso].decode("utf-8"))
+            except (UnicodeDecodeError, json.JSONDecodeError) as errore:
+                raise ErroreImportazione(
+                    f"Il file archiviato {percorso} non contiene JSON UTF-8 valido."
+                ) from errore
+            if not isinstance(personaggio, dict):
+                raise ErroreImportazione(
+                    f"Il file archiviato {percorso} deve contenere un personaggio."
+                )
+            personaggi.append(personaggio)
 
     istante = _adesso_utc()
     risultato: list[MemoriaDaSalvare] = []

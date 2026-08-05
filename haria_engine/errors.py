@@ -9,6 +9,26 @@ class ErroreImportazione(ErroreHaria):
     """Il pacchetto scelto non può essere importato."""
 
 
+class ErroreZipNonValido(ErroreImportazione):
+    """L'archivio ZIP non è leggibile o non è un archivio valido."""
+
+
+class ErroreArchivioNonSicuro(ErroreImportazione):
+    """Il pacchetto contiene percorsi, link o dimensioni non sicuri."""
+
+
+class ErroreManifest(ErroreImportazione):
+    """Il manifest non descrive fedelmente il pacchetto."""
+
+
+class ErrorePacchettoCompleto(ErroreImportazione):
+    """Un pacchetto completo non contiene tutti i file strutturali richiesti."""
+
+
+class ErroreAnteprimaMedia(ErroreHaria):
+    """Il media è conservato ma non visualizzabile nativamente."""
+
+
 class ErroreEsportazione(ErroreHaria):
     """Il mondo non può essere esportato."""
 
