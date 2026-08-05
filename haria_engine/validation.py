@@ -11,10 +11,15 @@ from .memories import MemoriaPersonaggio
 from .models import Mondo
 from .validation_models import (
     EntitaValidazione,
+    EsitoProposta,
+    EsitoSequenza,
     EventoValidazione,
     FotografiaValidazioneMondo,
     MemoriaValidazione,
+    PropostaValidazione,
+    RapportoValidazione,
 )
+from .validation_rules import controlla_integrita, valida_sequenza_pura
 from .world_state import EntitaMondo, EventoMondo, TIPO_PERSONAGGIO
 
 
@@ -107,6 +112,37 @@ class ServizioValidazione:
             entita=entita,
             eventi=eventi,
             memorie=memorie,
+        )
+
+    def controlla_mondo(self, world_id: str) -> RapportoValidazione:
+        return controlla_integrita(self.costruisci_fotografia(world_id))
+
+    def valida_proposta(
+        self,
+        world_id: str,
+        proposta: PropostaValidazione,
+        riferimento_temporale: datetime,
+    ) -> EsitoProposta:
+        sequenza = self.valida_sequenza(
+            world_id, (proposta,), riferimento_temporale
+        )
+        esito = sequenza.esiti[0]
+        return EsitoProposta(
+            indice=esito.indice,
+            proposta=esito.proposta,
+            rapporto=sequenza.rapporto,
+            fotografia=esito.fotografia,
+        )
+
+    def valida_sequenza(
+        self,
+        world_id: str,
+        proposte: Sequence[PropostaValidazione],
+        riferimento_temporale: datetime,
+    ) -> EsitoSequenza:
+        fotografia = self.costruisci_fotografia(world_id)
+        return valida_sequenza_pura(
+            fotografia, tuple(proposte), riferimento_temporale
         )
 
     @staticmethod
