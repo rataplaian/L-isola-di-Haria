@@ -16,9 +16,11 @@ from .llm_service import ServizioAI
 from .errors import ErroreEsportazione, ErroreImportazione
 from .memories import ServizioMemorie
 from .models import FileSorgente, Mondo, RisultatoEsportazione, VersioneMondo
+from .package_models import DocumentoCanonico, MediaCanonico, PacchettoMondo
 from .storage import ArchivioSQLite
 from .validation import ServizioValidazione
 from .world_state import ServizioStatoMondo, importa_entita_da_file
+from .world_package import importa_pacchetto_da_cartella, importa_pacchetto_da_zip
 
 
 FILE_OBBLIGATORI = (
@@ -46,34 +48,44 @@ class ServizioMondi:
 
     def importa_da_cartella(self, cartella_sorgente: str | Path) -> Mondo:
         sorgente = Path(cartella_sorgente).expanduser().resolve()
-        if not sorgente.is_dir():
-            raise ErroreImportazione("La cartella selezionata non esiste o non è leggibile.")
+        pacchetto = importa_pacchetto_da_cartella(sorgente)
+        return self.importa_pacchetto_validato(pacchetto, str(sorgente))
 
-        mancanti = [nome for nome in FILE_OBBLIGATORI if not (sorgente / nome).is_file()]
-        if mancanti:
-            elenco = ", ".join(mancanti)
+    def importa_da_zip(self, percorso_zip: str | Path) -> Mondo:
+        percorso = Path(percorso_zip).expanduser().resolve()
+        pacchetto = importa_pacchetto_da_zip(percorso)
+        return self.importa_pacchetto_validato(pacchetto, str(percorso))
+
+    def importa(self, percorso: str | Path) -> Mondo:
+        sorgente = Path(percorso).expanduser().resolve()
+        if sorgente.is_dir():
+            return self.importa_da_cartella(sorgente)
+        if sorgente.suffix.casefold() == ".zip":
+            return self.importa_da_zip(sorgente)
+        raise ErroreImportazione("Seleziona una cartella o un archivio ZIP valido.")
+
+    def importa_pacchetto_validato(
+        self, pacchetto: PacchettoMondo, percorso_sorgente: str
+    ) -> Mondo:
+        riferimenti_mondo = {
+            *(voce.world_id for voce in pacchetto.documents),
+            *(voce.world_id for voce in pacchetto.media),
+        }
+        if riferimenti_mondo - {pacchetto.world_id}:
             raise ErroreImportazione(
-                f"Mancano i file obbligatori per l'importazione: {elenco}."
+                "Il pacchetto contiene riferimenti appartenenti a un altro mondo."
             )
-
-        dati_mondo = self._leggi_world_json(sorgente / "world.json")
-        mondo_id = self._campo_testuale(dati_mondo, "id", "identificatore")
-        titolo = self._campo_testuale(dati_mondo, "title", "titolo")
-        lingua = str(dati_mondo.get("language") or "it")
-        scenario = self._leggi_testo(sorgente / "scenario.md", "scenario.md")
-        impostazioni = self._leggi_impostazioni(dati_mondo)
-        file_sorgente = self._fotografa_file_sorgente(sorgente)
-        entita = importa_entita_da_file(file_sorgente)
-
         return self.archivio.importa_mondo(
-            mondo_id=mondo_id,
-            titolo=titolo,
-            lingua=lingua,
-            percorso_sorgente=str(sorgente),
-            scenario=scenario,
-            impostazioni_narrative=impostazioni,
-            file_sorgente=file_sorgente,
-            entita=entita,
+            mondo_id=pacchetto.world_id,
+            titolo=pacchetto.title,
+            lingua=pacchetto.language,
+            percorso_sorgente=percorso_sorgente,
+            scenario=pacchetto.scenario,
+            impostazioni_narrative=pacchetto.narrative_settings,
+            file_sorgente=pacchetto.source_files,
+            entita=pacchetto.entities,
+            documenti=pacchetto.documents,
+            media=pacchetto.media,
         )
 
     def _leggi_world_json(self, percorso: Path) -> dict[str, object]:
@@ -168,6 +180,17 @@ class ServizioMondi:
     def carica_mondo(self, mondo_id: str) -> Mondo:
         return self.archivio.carica_mondo(mondo_id)
 
+    def elenca_documenti(
+        self, mondo_id: str, document_type: str | None = None
+    ) -> list[DocumentoCanonico]:
+        return self.archivio.elenca_documenti(mondo_id, document_type)
+
+    def elenca_media(self, mondo_id: str) -> list[MediaCanonico]:
+        return self.archivio.elenca_media(mondo_id)
+
+    def carica_media_contenuto(self, mondo_id: str, media_id: str) -> bytes:
+        return self.archivio.carica_media_contenuto(mondo_id, media_id)
+
     def salva(
         self,
         mondo_id: str,
@@ -259,6 +282,31 @@ class ServizioMondi:
             json.dumps(dati_world, ensure_ascii=False, indent=2) + "\n",
             encoding="utf-8",
         )
+        percorso_manifest = cartella / "manifest.json"
+        if percorso_manifest.is_file():
+            dati_manifest = json.loads(percorso_manifest.read_text(encoding="utf-8"))
+            if not isinstance(dati_manifest, dict):
+                raise ErroreEsportazione("Il manifest sorgente non è un oggetto valido.")
+            file_manifest: list[dict[str, str]] = []
+            for percorso in sorted(
+                (
+                    voce for voce in cartella.rglob("*")
+                    if voce.is_file() and voce != percorso_manifest
+                ),
+                key=lambda voce: voce.relative_to(cartella).as_posix().casefold(),
+            ):
+                contenuto = percorso.read_bytes()
+                file_manifest.append(
+                    {
+                        "path": percorso.relative_to(cartella).as_posix(),
+                        "sha256": hashlib.sha256(contenuto).hexdigest(),
+                    }
+                )
+            dati_manifest["files"] = file_manifest
+            percorso_manifest.write_text(
+                json.dumps(dati_manifest, ensure_ascii=False, indent=2) + "\n",
+                encoding="utf-8",
+            )
 
     @staticmethod
     def _rimuovi_cartella_temporanea(cartella: Path | None) -> None:

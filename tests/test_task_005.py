@@ -558,9 +558,9 @@ class TestTask005(unittest.TestCase):
         dopo = self.fotografia_database()
         self.assertEqual(dopo, prima)
 
-    def test_user_version_resta_quattro(self) -> None:
+    def test_user_version_resta_cinque(self) -> None:
         self.servizio.validazione.controlla_mondo(MONDO_ID)
-        self.assertEqual(self.fotografia_database()["user_version"], 4)
+        self.assertEqual(self.fotografia_database()["user_version"], 5)
 
     def test_conteggi_tabelle_invariati(self) -> None:
         prima = self.fotografia_database()["conteggi"]

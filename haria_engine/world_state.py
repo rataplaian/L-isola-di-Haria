@@ -364,9 +364,21 @@ def importa_entita_da_file(
         file.percorso_relativo.replace("\\", "/"): file.contenuto
         for file in file_sorgente
     }
-    personaggi = _leggi_lista(fotografie, "characters.json", "personaggi")
-    luoghi = _leggi_lista(fotografie, "locations.json", "luoghi")
-    oggetti = _leggi_lista(fotografie, "items.json", "oggetti")
+    formato_legacy = any(
+        nome in fotografie
+        for nome in ("characters.json", "locations.json", "items.json")
+    )
+    personaggi = _leggi_entita_archiviate(
+        fotografie, "characters.json", "characters/", "personaggi", obbligatorie=True
+    )
+    luoghi = _leggi_entita_archiviate(
+        fotografie, "locations.json", "locations/", "luoghi",
+        obbligatorie=formato_legacy,
+    )
+    oggetti = _leggi_entita_archiviate(
+        fotografie, "items.json", "items/", "oggetti",
+        obbligatorie=formato_legacy,
+    )
 
     risultato: list[EntitaImportata] = []
     for dati in personaggi:
@@ -443,6 +455,46 @@ def _leggi_lista(
             f"Il file archiviato {nome_file} deve contenere un elenco valido."
         )
     return [dict(voce) for voce in dati]
+
+
+def _leggi_entita_archiviate(
+    fotografie: Mapping[str, bytes],
+    nome_aggregato: str,
+    prefisso: str,
+    descrizione: str,
+    *,
+    obbligatorie: bool = False,
+) -> list[dict[str, object]]:
+    """Legge il formato legacy aggregato o i file individuali del formato completo."""
+
+    if nome_aggregato in fotografie:
+        return _leggi_lista(fotografie, nome_aggregato, descrizione)
+    percorsi = sorted(
+        (
+            percorso
+            for percorso in fotografie
+            if percorso.startswith(prefisso) and percorso.casefold().endswith(".json")
+        ),
+        key=str.casefold,
+    )
+    if obbligatorie and not percorsi:
+        raise ErroreImportazione(
+            f"Il pacchetto non contiene file individuali per {descrizione}."
+        )
+    risultato: list[dict[str, object]] = []
+    for percorso in percorsi:
+        try:
+            dati = json.loads(fotografie[percorso].decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as errore:
+            raise ErroreImportazione(
+                f"Il file archiviato {percorso} non contiene JSON UTF-8 valido."
+            ) from errore
+        if not isinstance(dati, dict):
+            raise ErroreImportazione(
+                f"Il file archiviato {percorso} deve contenere una singola entità."
+            )
+        risultato.append(dict(dati))
+    return risultato
 
 
 def _testo_obbligatorio(

@@ -88,7 +88,20 @@ La scheda italiana **Validazione mondo** esegue il controllo soltanto su
 richiesta esplicita e mostra un riepilogo e problemi ordinati con severità,
 ambito e messaggio leggibili. Non espone codici tecnici, identificatori, JSON o
 dettagli del database. Il Task 005 non usa il provider Ollama e mantiene lo
-schema SQLite alla versione 4.
+schema SQLite allora corrente senza introdurre scritture proprie.
+
+## Task 006 — Pacchetti completi di mondo
+
+Lo schema SQLite 5 indicizza documenti canonici e media senza duplicarne i
+byte, che restano nelle fotografie `source_files`. Sono supportati sia il
+formato legacy di `sample_world/` sia pacchetti completi da cartella o ZIP con
+manifest, personaggi individuali, luoghi, oggetti, lore, timeline e media.
+
+Gli ZIP vengono estratti soltanto in una directory temporanea dopo controlli
+su percorsi, link, duplicati e dimensioni. La GUI aggiunge le schede italiane
+**Personaggi**, **Lore**, **Regole e stile** e **Media**; ID tecnici e JSON non
+sono mostrati. Le importazioni più costose vengono lette e validate da un
+worker daemon, mentre SQLite e Tkinter restano nel thread principale.
 
 ## Requisiti
 
@@ -134,7 +147,8 @@ py -3 -m haria_engine --database C:\percorso\haria.sqlite3
 
 ## Uso
 
-1. Selezionare **Importa mini-Bibbia** e scegliere `sample_world/` o un pacchetto compatibile.
+1. Selezionare **Importa da cartella** oppure **Importa da ZIP** e scegliere
+   `sample_world/` o un pacchetto compatibile.
 2. Modificare lo scenario e, se presenti, le impostazioni narrative.
 3. Selezionare **Salva nuova versione**: ogni salvataggio resta recuperabile.
 4. Usare **Cronologia versioni** per ripristinare una versione; anche il ripristino crea una nuova versione.
@@ -148,6 +162,8 @@ py -3 -m haria_engine --database C:\percorso\haria.sqlite3
    impostazioni** rende persistenti URL, modello e timeout.
 9. Aprire **Validazione mondo** e selezionare **Controlla mondo** per eseguire
    un audit deterministico in sola lettura del mondo corrente.
+10. Usare **Personaggi**, **Lore**, **Regole e stile** e **Media** per consultare
+    il pacchetto completo senza vedere dati tecnici.
 
 ## Test e verifica di avvio
 
@@ -165,8 +181,8 @@ python3 -m unittest discover -s tests -v
 python3 -m haria_engine --check
 ```
 
-La suite corrente contiene **178 test automatici** per Task 001, Task 002,
-Task 003, Task 004 e Task 005. I test Ollama usano trasporti simulati e non
+La suite corrente contiene **212 test automatici** per Task 001–006. I test
+Ollama usano trasporti simulati e non
 effettuano richieste verso servizi reali; i test del validatore verificano
 anche che database e configurazione AI rimangano invariati.
 
@@ -181,5 +197,5 @@ creata in una nuova cartella.
 Le motivazioni dello stack e i confini architetturali sono descritti in
 `docs/TECHNICAL_DECISIONS.md`. Gli stati puntuali degli incarichi sono in
 `docs/TASK_001_STATUS.md`, `docs/TASK_002_STATUS.md`,
-`docs/TASK_003_STATUS.md`, `docs/TASK_004_STATUS.md` e
-`docs/TASK_005_STATUS.md`.
+`docs/TASK_003_STATUS.md`, `docs/TASK_004_STATUS.md`,
+`docs/TASK_005_STATUS.md` e `docs/TASK_006_STATUS.md`.

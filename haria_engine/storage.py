@@ -32,6 +32,7 @@ from .memories import (
     importa_conoscenze_iniziali,
 )
 from .models import FileSorgente, Mondo, VersioneMondo
+from .package_models import DocumentoCanonico, MediaCanonico
 from .world_state import (
     AggiornamentoStato,
     EntitaImportata,
@@ -90,7 +91,10 @@ class ArchivioSQLite:
         if versione == 3:
             self._migra_da_3_a_4()
             versione = 4
-        if versione != 4:
+        if versione == 4:
+            self._migra_da_4_a_5()
+            versione = 5
+        if versione != 5:
             raise ErroreMigrazione(
                 f"La versione schema {versione} del database non è supportata."
             )
@@ -336,6 +340,79 @@ class ArchivioSQLite:
             raise ErroreMigrazione(
                 "La migrazione allo schema 4 non è riuscita; il database è "
                 "rimasto allo schema 3 senza dati parziali."
+            ) from errore
+
+    def _migra_da_4_a_5(self) -> None:
+        """Aggiunge l'indice consultabile senza reinterpretare i mondi esistenti."""
+
+        istruzioni = (
+            """
+                CREATE TABLE canonical_documents (
+                    world_id TEXT NOT NULL,
+                    document_id TEXT NOT NULL,
+                    document_type TEXT NOT NULL,
+                    title TEXT NOT NULL,
+                    relative_path TEXT NOT NULL,
+                    content TEXT NOT NULL,
+                    sort_order INTEGER NOT NULL,
+                    metadata TEXT NOT NULL,
+                    sha256 TEXT NOT NULL,
+                    PRIMARY KEY (world_id, document_id),
+                    UNIQUE (world_id, relative_path),
+                    FOREIGN KEY (world_id) REFERENCES worlds(id) ON DELETE RESTRICT,
+                    FOREIGN KEY (world_id, relative_path)
+                        REFERENCES source_files(world_id, relative_path) ON DELETE RESTRICT,
+                    CHECK (length(trim(document_id)) > 0),
+                    CHECK (length(trim(document_type)) > 0),
+                    CHECK (sort_order >= 0)
+                )
+            """,
+            """
+                CREATE TABLE media_assets (
+                    world_id TEXT NOT NULL,
+                    media_id TEXT NOT NULL,
+                    relative_path TEXT NOT NULL,
+                    media_type TEXT NOT NULL,
+                    mime_type TEXT NOT NULL,
+                    sha256 TEXT NOT NULL,
+                    title TEXT NOT NULL,
+                    alt_text TEXT NOT NULL,
+                    entity_id TEXT,
+                    sort_order INTEGER NOT NULL,
+                    metadata TEXT NOT NULL,
+                    PRIMARY KEY (world_id, media_id),
+                    UNIQUE (world_id, relative_path),
+                    FOREIGN KEY (world_id) REFERENCES worlds(id) ON DELETE RESTRICT,
+                    FOREIGN KEY (world_id, relative_path)
+                        REFERENCES source_files(world_id, relative_path) ON DELETE RESTRICT,
+                    FOREIGN KEY (world_id, entity_id)
+                        REFERENCES world_entities(world_id, entity_id) ON DELETE RESTRICT,
+                    CHECK (length(trim(media_id)) > 0),
+                    CHECK (length(trim(media_type)) > 0),
+                    CHECK (length(trim(mime_type)) > 0),
+                    CHECK (sort_order >= 0)
+                )
+            """,
+            """
+                CREATE INDEX idx_canonical_documents_order
+                    ON canonical_documents(world_id, document_type, sort_order, title)
+            """,
+            """
+                CREATE INDEX idx_media_assets_order
+                    ON media_assets(world_id, sort_order, title)
+            """,
+        )
+        self._connessione.execute("BEGIN IMMEDIATE")
+        try:
+            for istruzione in istruzioni:
+                self._connessione.execute(istruzione)
+            self._connessione.execute("PRAGMA user_version = 5")
+            self._connessione.commit()
+        except sqlite3.Error as errore:
+            self._connessione.rollback()
+            raise ErroreMigrazione(
+                "La migrazione allo schema 5 non è riuscita; il database è "
+                "rimasto allo schema 4 senza dati parziali."
             ) from errore
 
     def _migra_da_2_a_3(self) -> None:
@@ -615,9 +692,45 @@ class ArchivioSQLite:
         impostazioni_narrative: Mapping[str, str],
         file_sorgente: Iterable[FileSorgente],
         entita: Iterable[EntitaImportata],
+        documenti: Iterable[DocumentoCanonico] = (),
+        media: Iterable[MediaCanonico] = (),
+    ) -> Mondo:
+        try:
+            return self._importa_mondo_transazionale(
+                mondo_id=mondo_id,
+                titolo=titolo,
+                lingua=lingua,
+                percorso_sorgente=percorso_sorgente,
+                scenario=scenario,
+                impostazioni_narrative=impostazioni_narrative,
+                file_sorgente=file_sorgente,
+                entita=entita,
+                documenti=documenti,
+                media=media,
+            )
+        except sqlite3.Error as errore:
+            raise ErroreImportazione(
+                "L'importazione non è riuscita; nessun dato parziale è stato salvato."
+            ) from errore
+
+    def _importa_mondo_transazionale(
+        self,
+        *,
+        mondo_id: str,
+        titolo: str,
+        lingua: str,
+        percorso_sorgente: str,
+        scenario: str,
+        impostazioni_narrative: Mapping[str, str],
+        file_sorgente: Iterable[FileSorgente],
+        entita: Iterable[EntitaImportata],
+        documenti: Iterable[DocumentoCanonico] = (),
+        media: Iterable[MediaCanonico] = (),
     ) -> Mondo:
         elenco_file_sorgente = list(file_sorgente)
         elenco_entita = list(entita)
+        elenco_documenti = list(documenti)
+        elenco_media = list(media)
         memorie_iniziali = importa_conoscenze_iniziali(
             elenco_file_sorgente, mondo_id
         )
@@ -666,6 +779,41 @@ class ArchivioSQLite:
             )
             self._inserisci_entita(mondo_id, elenco_entita)
             self._inserisci_memorie_iniziali(memorie_iniziali)
+            self._connessione.executemany(
+                """
+                INSERT INTO canonical_documents (
+                    world_id, document_id, document_type, title, relative_path,
+                    content, sort_order, metadata, sha256
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    (
+                        voce.world_id, voce.document_id, voce.document_type,
+                        voce.title, voce.relative_path, voce.content,
+                        voce.sort_order,
+                        json.dumps(dict(voce.metadata), ensure_ascii=False, sort_keys=True),
+                        voce.sha256,
+                    )
+                    for voce in elenco_documenti
+                ),
+            )
+            self._connessione.executemany(
+                """
+                INSERT INTO media_assets (
+                    world_id, media_id, relative_path, media_type, mime_type,
+                    sha256, title, alt_text, entity_id, sort_order, metadata
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    (
+                        voce.world_id, voce.media_id, voce.relative_path,
+                        voce.media_type, voce.mime_type, voce.sha256, voce.title,
+                        voce.alt_text, voce.entity_id, voce.sort_order,
+                        json.dumps(dict(voce.metadata), ensure_ascii=False, sort_keys=True),
+                    )
+                    for voce in elenco_media
+                ),
+            )
         return self.carica_mondo(mondo_id)
 
     def elenca_mondi(self) -> list[Mondo]:
@@ -1287,6 +1435,81 @@ class ArchivioSQLite:
     def file_sorgente(self, mondo_id: str) -> list[FileSorgente]:
         self.carica_mondo(mondo_id)
         return self._file_sorgente_senza_validazione(mondo_id)
+
+    def elenca_documenti(
+        self, mondo_id: str, document_type: str | None = None
+    ) -> list[DocumentoCanonico]:
+        self.carica_mondo(mondo_id)
+        filtro = ""
+        parametri: list[object] = [mondo_id]
+        if document_type is not None:
+            filtro = " AND document_type = ?"
+            parametri.append(document_type)
+        righe = self._connessione.execute(
+            """
+            SELECT world_id, document_id, document_type, title, relative_path,
+                   content, sort_order, metadata, sha256
+            FROM canonical_documents WHERE world_id = ?
+            """ + filtro + " ORDER BY sort_order, title, document_id",
+            tuple(parametri),
+        ).fetchall()
+        return [
+            DocumentoCanonico(
+                world_id=riga["world_id"],
+                document_id=riga["document_id"],
+                document_type=riga["document_type"],
+                title=riga["title"],
+                relative_path=riga["relative_path"],
+                content=riga["content"],
+                sort_order=int(riga["sort_order"]),
+                metadata=_deserializza_oggetto(riga["metadata"]),
+                sha256=riga["sha256"],
+            )
+            for riga in righe
+        ]
+
+    def elenca_media(self, mondo_id: str) -> list[MediaCanonico]:
+        self.carica_mondo(mondo_id)
+        righe = self._connessione.execute(
+            """
+            SELECT world_id, media_id, relative_path, media_type, mime_type,
+                   sha256, title, alt_text, entity_id, sort_order, metadata
+            FROM media_assets WHERE world_id = ?
+            ORDER BY sort_order, title, media_id
+            """,
+            (mondo_id,),
+        ).fetchall()
+        return [
+            MediaCanonico(
+                world_id=riga["world_id"],
+                media_id=riga["media_id"],
+                relative_path=riga["relative_path"],
+                media_type=riga["media_type"],
+                mime_type=riga["mime_type"],
+                sha256=riga["sha256"],
+                title=riga["title"],
+                alt_text=riga["alt_text"],
+                entity_id=riga["entity_id"],
+                sort_order=int(riga["sort_order"]),
+                metadata=_deserializza_oggetto(riga["metadata"]),
+            )
+            for riga in righe
+        ]
+
+    def carica_media_contenuto(self, mondo_id: str, media_id: str) -> bytes:
+        riga = self._connessione.execute(
+            """
+            SELECT s.content
+            FROM media_assets AS m
+            JOIN source_files AS s
+              ON s.world_id = m.world_id AND s.relative_path = m.relative_path
+            WHERE m.world_id = ? AND m.media_id = ?
+            """,
+            (mondo_id, media_id),
+        ).fetchone()
+        if riga is None:
+            raise MondoNonTrovato("Il media richiesto non è presente nel mondo.")
+        return bytes(riga["content"])
 
     def carica_configurazione_ai(self) -> ConfigurazioneAI:
         riga = self._connessione.execute(

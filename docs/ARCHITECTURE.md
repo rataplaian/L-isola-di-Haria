@@ -8,6 +8,15 @@ Schermata narrativa e editor in italiano.
 ### 2. Importatore Bibbia
 Accetta un pacchetto di mondo e lo converte nel formato interno.
 
+Nel Task 006, `haria_engine/world_package.py` legge cartelle e ZIP, fotografa i
+file, applica limiti e controlli sui percorsi, valida manifest, hash, entità,
+documenti e media e restituisce soltanto modelli immutabili. Lo ZIP vive in una
+directory temporanea. Nessuna connessione SQLite o GUI entra nel parser.
+
+La lettura e validazione avvengono su un worker daemon. Il risultato tipizzato
+torna al thread principale, che esegue l'unica transazione di importazione e
+aggiorna Tkinter. Il worker non riceve database, widget o provider AI.
+
 ### 3. Archivio canonico
 Conserva la Bibbia originale, versionata e non distruttiva.
 
@@ -86,7 +95,7 @@ tardivi sono gestiti senza aggiornare widget distrutti.
 La narrazione non è la fonte della verità.
 Il database è la fonte della verità.
 
-## Confini implementati fino al Task 005
+## Confini implementati fino al Task 006
 
 - Il canone originale resta immutabile in `world_entities.canonical_data` e
   nelle fotografie sorgente.
@@ -111,9 +120,16 @@ Il database è la fonte della verità.
   implementate.
 - Il validatore legge canone, stato, eventi e memorie attraverso il servizio
   applicativo, produce problemi ordinati e può simulare proposte soltanto in
-  memoria. Lo schema SQLite resta alla versione 4.
+  memoria.
 - L'audit dalla GUI è manuale: non parte all'avvio e il risultato viene
   azzerato quando cambia il mondo selezionato.
+- Lo schema 5 indicizza documenti e media completi; i byte dei media restano
+  soltanto in `source_files` e vengono recuperati tramite chiavi esterne.
+- Il parser supporta `world.json` ma non YAML, conserva campi canonici non
+  interpretati e rifiuta l'intero pacchetto prima di scrivere se manifest,
+  hash, riferimenti o percorsi non sono coerenti.
+- Le schede Personaggi, Lore, Regole e stile e Media leggono modelli tipizzati,
+  non mostrano JSON o ID e usano un fallback italiano per anteprime non native.
 
 La GUI legge modelli tipizzati e non accede direttamente a SQL o dati tecnici.
 La vista delle memorie usa query aggregate per fonti ed entità collegate.

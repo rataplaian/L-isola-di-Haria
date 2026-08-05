@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+import base64
 import tkinter as tk
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
@@ -19,15 +20,19 @@ from .editor_state import SceltaModifiche, StatoEditor
 from .errors import ErroreConfigurazioneAI, ErroreHaria
 from .memories import MemoriaPersonaggio
 from .models import Mondo
+from .package_models import DocumentoCanonico, MediaCanonico, PacchettoMondo
 from .paths import database_predefinito
 from .service import ServizioMondi
 from .validation_models import AmbitoValidazione, SeveritaProblema
 from .world_state import EntitaMondo, TIPO_OGGETTO, TIPO_PERSONAGGIO
+from .world_package import importa_pacchetto_da_cartella, importa_pacchetto_da_zip
 
 
 UI_TEXT = {
     "titolo_finestra": "Haria Engine — Editor del mondo",
     "importa": "Importa mini-Bibbia",
+    "importa_cartella": "Importa da cartella",
+    "importa_zip": "Importa da ZIP",
     "esporta": "Esporta mondo",
     "nessun_mondo": "Nessun mondo importato",
     "istruzione_importa": "Importa una mini-Bibbia da una cartella per iniziare.",
@@ -40,13 +45,15 @@ UI_TEXT = {
     "stato_pronto": "Pronto",
     "errore": "Errore",
     "operazione_completata": "Operazione completata",
-    "importazione_completata": "Mini-Bibbia importata correttamente.",
+    "importazione_completata": "Pacchetto del mondo importato correttamente.",
+    "importazione_in_corso": "Lettura e validazione del pacchetto in corso…",
     "salvataggio_completato": "Nuova versione salvata correttamente.",
     "ripristino_completato": "Versione ripristinata creando una nuova versione recuperabile.",
     "esportazione_completata": "Mondo esportato nella cartella:\n{cartella}",
     "conferma_ripristino": "Ripristinare la versione {numero}? La versione corrente resterà nella cronologia.",
     "seleziona_versione": "Seleziona una versione dalla cronologia.",
-    "seleziona_sorgente": "Seleziona la cartella della mini-Bibbia",
+    "seleziona_sorgente": "Seleziona la cartella del pacchetto",
+    "seleziona_zip": "Seleziona l'archivio ZIP del pacchetto",
     "seleziona_destinazione": "Seleziona la cartella di destinazione",
     "numero_versione": "Versione",
     "data_versione": "Data",
@@ -126,6 +133,17 @@ UI_TEXT = {
     "ambito_validazione": "Ambito",
     "problema_validazione": "Problema rilevato",
     "validazione_errore": "Il controllo del mondo non è riuscito.",
+    "personaggi": "Personaggi",
+    "lore": "Lore",
+    "regole_stile": "Regole e stile",
+    "media": "Media",
+    "canone_personaggio": "Canone importato",
+    "stato_corrente_personaggio": "Stato corrente",
+    "nessun_personaggio": "Nessun personaggio disponibile.",
+    "nessun_documento": "Nessun documento disponibile.",
+    "nessun_media": "Nessun media disponibile.",
+    "anteprima_non_disponibile": "Anteprima non disponibile per questo formato.",
+    "media_non_selezionato": "Seleziona un media per visualizzarne i dettagli.",
 }
 
 
@@ -147,6 +165,67 @@ def etichetta_impostazione(chiave: str) -> str:
     return ETICHETTE_IMPOSTAZIONI.get(
         chiave, chiave.replace("_", " ").strip().capitalize()
     )
+
+
+def anteprima_media_supportata(mime_type: str) -> bool:
+    """Indica i formati caricabili da Tk senza dipendenze esterne."""
+
+    return mime_type in {
+        "image/png",
+        "image/gif",
+        "image/x-portable-pixmap",
+        "image/x-portable-graymap",
+    }
+
+
+def formatta_canone_personaggio(dati: Mapping[str, object]) -> str:
+    """Rende il canone leggibile senza serializzare JSON o mostrare ID tecnici."""
+
+    etichette = {
+        "name": "Nome",
+        "age": "Età",
+        "origin": "Origine",
+        "tribe": "Tribù",
+        "role": "Ruolo",
+        "profile": "Profilo",
+        "text": "Profilo",
+        "physical_description": "Descrizione fisica",
+        "personality": "Personalità",
+        "skills": "Competenze",
+        "limits": "Limiti",
+        "goals": "Obiettivi",
+        "knowledge": "Conoscenze iniziali",
+        "author_notes": "Note dell'autore",
+    }
+    escluse = {
+        "id", "status", "location_id", "owner_id", "image",
+        "accessible", "condition", "relationships",
+    }
+    righe: list[str] = []
+    for chiave, valore in dati.items():
+        if chiave in escluse or chiave.endswith("_id") or valore in (None, "", [], {}):
+            continue
+        etichetta = etichette.get(chiave, chiave.replace("_", " ").capitalize())
+        if isinstance(valore, list):
+            elementi = [str(voce) for voce in valore if isinstance(voce, (str, int, float))]
+            testo = "\n".join(f"• {voce}" for voce in elementi)
+        elif isinstance(valore, Mapping):
+            elementi = [
+                f"{str(sottochiave).replace('_', ' ').capitalize()}: {sottovalore}"
+                for sottochiave, sottovalore in valore.items()
+                if not str(sottochiave).endswith("_id")
+                and isinstance(sottovalore, (str, int, float, bool))
+            ]
+            testo = "\n".join(elementi)
+        elif isinstance(valore, bool):
+            testo = "Sì" if valore else "No"
+        elif isinstance(valore, (str, int, float)):
+            testo = str(valore)
+        else:
+            continue
+        if testo:
+            righe.append(f"{etichetta}\n{testo}")
+    return "\n\n".join(righe)
 
 
 def etichetta_stato_memoria(effective_status: str) -> str:
@@ -193,6 +272,13 @@ class ApplicazioneHaria:
         self._entita_memorie: list[EntitaMondo] = []
         self._cronologia_completa_memorie = tk.BooleanVar(value=False)
         self._coordinatore_ai = CoordinatoreAsincrono()
+        self._coordinatore_importazione = CoordinatoreAsincrono()
+        self._controllo_importazione_after: str | None = None
+        self._origine_importazione: str = ""
+        self._personaggi_completi: list[EntitaMondo] = []
+        self._documenti_lore: list[DocumentoCanonico] = []
+        self._media_completi: list[MediaCanonico] = []
+        self._immagine_media: tk.PhotoImage | None = None
         self._controllo_ai_after: str | None = None
         self._chiusura_in_corso = False
         self._pulsanti_rete_ai: list[ttk.Button] = []
@@ -205,6 +291,7 @@ class ApplicazioneHaria:
         self._carica_configurazione_ai()
         self._carica_mondo_esistente()
         self._programma_controllo_ai()
+        self._programma_controllo_importazione()
 
     def _costruisci_interfaccia(self) -> None:
         contenitore = ttk.Frame(self.radice, padding=14)
@@ -212,9 +299,16 @@ class ApplicazioneHaria:
 
         barra = ttk.Frame(contenitore)
         barra.pack(fill=tk.X)
-        ttk.Button(
-            barra, text=UI_TEXT["importa"], command=self._importa_da_interfaccia
-        ).pack(side=tk.LEFT)
+        self.pulsante_importa_cartella = ttk.Button(
+            barra,
+            text=UI_TEXT["importa_cartella"],
+            command=self._importa_da_interfaccia,
+        )
+        self.pulsante_importa_cartella.pack(side=tk.LEFT)
+        self.pulsante_importa_zip = ttk.Button(
+            barra, text=UI_TEXT["importa_zip"], command=self._importa_zip_da_interfaccia
+        )
+        self.pulsante_importa_zip.pack(side=tk.LEFT, padx=(8, 0))
         self.pulsante_esporta = ttk.Button(
             barra,
             text=UI_TEXT["esporta"],
@@ -272,6 +366,7 @@ class ApplicazioneHaria:
 
         self._costruisci_scheda_stato_mondo()
         self._costruisci_scheda_memorie()
+        self._costruisci_schede_pacchetto()
         self._costruisci_scheda_validazione()
         self._costruisci_scheda_ai()
 
@@ -313,6 +408,78 @@ class ApplicazioneHaria:
             contenitore, text=UI_TEXT["istruzione_importa"], anchor=tk.W
         )
         self.etichetta_stato.pack(fill=tk.X, pady=(10, 0))
+
+    def _costruisci_schede_pacchetto(self) -> None:
+        scheda_personaggi = ttk.Frame(self.schede, padding=10)
+        self.schede.add(scheda_personaggi, text=UI_TEXT["personaggi"])
+        scheda_personaggi.rowconfigure(0, weight=1)
+        scheda_personaggi.columnconfigure(1, weight=1)
+        self.albero_personaggi = ttk.Treeview(
+            scheda_personaggi, columns=("nome",), show="headings", selectmode="browse"
+        )
+        self.albero_personaggi.heading("nome", text="Nome")
+        self.albero_personaggi.column("nome", width=220)
+        self.albero_personaggi.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
+        self.albero_personaggi.bind("<<TreeviewSelect>>", self._mostra_personaggio)
+        self.testo_personaggio = tk.Text(
+            scheda_personaggi, wrap=tk.WORD, state=tk.DISABLED, padx=12, pady=12
+        )
+        self.testo_personaggio.grid(row=0, column=1, sticky="nsew")
+
+        scheda_lore = ttk.Frame(self.schede, padding=10)
+        self.schede.add(scheda_lore, text=UI_TEXT["lore"])
+        scheda_lore.rowconfigure(0, weight=1)
+        scheda_lore.columnconfigure(1, weight=1)
+        self.albero_lore = ttk.Treeview(
+            scheda_lore, columns=("titolo", "tipo"), show="headings", selectmode="browse"
+        )
+        self.albero_lore.heading("titolo", text="Titolo")
+        self.albero_lore.heading("tipo", text="Tipo")
+        self.albero_lore.column("titolo", width=220)
+        self.albero_lore.column("tipo", width=100)
+        self.albero_lore.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
+        self.albero_lore.bind("<<TreeviewSelect>>", self._mostra_documento_lore)
+        self.testo_lore = tk.Text(
+            scheda_lore, wrap=tk.WORD, state=tk.DISABLED, padx=12, pady=12
+        )
+        self.testo_lore.grid(row=0, column=1, sticky="nsew")
+
+        scheda_regole = ttk.Frame(self.schede, padding=10)
+        self.schede.add(scheda_regole, text=UI_TEXT["regole_stile"])
+        scheda_regole.rowconfigure(1, weight=1)
+        scheda_regole.rowconfigure(3, weight=1)
+        scheda_regole.columnconfigure(0, weight=1)
+        ttk.Label(scheda_regole, text="Regole del mondo").grid(row=0, column=0, sticky="w")
+        self.testo_regole = tk.Text(scheda_regole, wrap=tk.WORD, state=tk.DISABLED, height=8)
+        self.testo_regole.grid(row=1, column=0, sticky="nsew", pady=(4, 10))
+        ttk.Label(scheda_regole, text="Stile narrativo").grid(row=2, column=0, sticky="w")
+        self.testo_stile = tk.Text(scheda_regole, wrap=tk.WORD, state=tk.DISABLED, height=8)
+        self.testo_stile.grid(row=3, column=0, sticky="nsew", pady=(4, 0))
+
+        scheda_media = ttk.Frame(self.schede, padding=10)
+        self.schede.add(scheda_media, text=UI_TEXT["media"])
+        scheda_media.rowconfigure(0, weight=1)
+        scheda_media.columnconfigure(1, weight=1)
+        self.albero_media = ttk.Treeview(
+            scheda_media,
+            columns=("titolo", "tipo", "associazione"),
+            show="headings",
+            selectmode="browse",
+        )
+        for colonna, titolo in (("titolo", "Titolo"), ("tipo", "Tipo"), ("associazione", "Associato a")):
+            self.albero_media.heading(colonna, text=titolo)
+        self.albero_media.column("titolo", width=210)
+        self.albero_media.column("tipo", width=140)
+        self.albero_media.column("associazione", width=170)
+        self.albero_media.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
+        self.albero_media.bind("<<TreeviewSelect>>", self._mostra_media)
+        self.etichetta_anteprima_media = ttk.Label(
+            scheda_media,
+            text=UI_TEXT["media_non_selezionato"],
+            anchor=tk.CENTER,
+            justify=tk.CENTER,
+        )
+        self.etichetta_anteprima_media.grid(row=0, column=1, sticky="nsew")
 
     def _costruisci_scheda_ai(self) -> None:
         scheda = ttk.Frame(self.schede, padding=14)
@@ -790,6 +957,7 @@ class ApplicazioneHaria:
         self._aggiorna_cronologia()
         self._aggiorna_stato_mondo()
         self._aggiorna_memorie()
+        self._aggiorna_pacchetto_completo()
         self._azzera_validazione()
         self.pulsante_salva.configure(state=tk.NORMAL)
         self.pulsante_esporta.configure(state=tk.NORMAL)
@@ -897,6 +1065,112 @@ class ApplicazioneHaria:
             return
         self.radice.title(UI_TEXT["titolo_finestra"])
         self.etichetta_stato.configure(text=UI_TEXT["stato_pronto"])
+
+    @staticmethod
+    def _imposta_testo_sola_lettura(widget: tk.Text, contenuto: str) -> None:
+        widget.configure(state=tk.NORMAL)
+        widget.delete("1.0", tk.END)
+        widget.insert("1.0", contenuto)
+        widget.configure(state=tk.DISABLED)
+
+    def _aggiorna_pacchetto_completo(self) -> None:
+        for albero in (self.albero_personaggi, self.albero_lore, self.albero_media):
+            for elemento in albero.get_children():
+                albero.delete(elemento)
+        self._personaggi_completi = []
+        self._documenti_lore = []
+        self._media_completi = []
+        self._immagine_media = None
+        self._imposta_testo_sola_lettura(self.testo_personaggio, UI_TEXT["nessun_personaggio"])
+        self._imposta_testo_sola_lettura(self.testo_lore, UI_TEXT["nessun_documento"])
+        self._imposta_testo_sola_lettura(self.testo_regole, UI_TEXT["nessun_documento"])
+        self._imposta_testo_sola_lettura(self.testo_stile, UI_TEXT["nessun_documento"])
+        self.etichetta_anteprima_media.configure(
+            text=UI_TEXT["media_non_selezionato"], image=""
+        )
+        if self.mondo_corrente is None:
+            return
+        mondo_id = self.mondo_corrente.id
+        entita = self.servizio.stato_mondo.elenca_entita(mondo_id)
+        self._personaggi_completi = [
+            voce for voce in entita if voce.entity_type == TIPO_PERSONAGGIO
+        ]
+        nomi = {voce.entity_id: voce.canonical_name for voce in entita}
+        for indice, personaggio in enumerate(self._personaggi_completi):
+            self.albero_personaggi.insert("", tk.END, iid=str(indice), values=(personaggio.canonical_name,))
+        documenti = self.servizio.elenca_documenti(mondo_id)
+        self._documenti_lore = [
+            voce for voce in documenti if voce.document_type in {"lore", "timeline", "nota_autore"}
+        ]
+        for indice, documento in enumerate(self._documenti_lore):
+            self.albero_lore.insert(
+                "", tk.END, iid=str(indice),
+                values=(documento.title, self._etichetta_tecnica(documento.document_type)),
+            )
+        regole = next((voce.content for voce in documenti if voce.document_type == "regole"), UI_TEXT["nessun_documento"])
+        stile = next((voce.content for voce in documenti if voce.document_type == "stile"), UI_TEXT["nessun_documento"])
+        self._imposta_testo_sola_lettura(self.testo_regole, regole)
+        self._imposta_testo_sola_lettura(self.testo_stile, stile)
+        self._media_completi = self.servizio.elenca_media(mondo_id)
+        for indice, media in enumerate(self._media_completi):
+            self.albero_media.insert(
+                "", tk.END, iid=str(indice),
+                values=(media.title, self._etichetta_tecnica(media.media_type), nomi.get(media.entity_id, "Mondo")),
+            )
+
+    def _mostra_personaggio(self, _evento: object | None = None) -> None:
+        selezione = self.albero_personaggi.selection()
+        if not selezione:
+            return
+        personaggio = self._personaggi_completi[int(selezione[0])]
+        entita = self.servizio.stato_mondo.elenca_entita(personaggio.world_id)
+        nomi = {voce.entity_id: voce.canonical_name for voce in entita}
+        stato = (
+            f"Stato: {self._etichetta_tecnica(personaggio.status)}\n"
+            f"Posizione: {nomi.get(personaggio.location_id, '—')}\n"
+            f"Condizione: {personaggio.condition or '—'}"
+        )
+        canone = formatta_canone_personaggio(personaggio.canonical_data)
+        testo = (
+            f"{personaggio.canonical_name}\n\n"
+            f"{UI_TEXT['canone_personaggio']}\n{canone or '—'}\n\n"
+            f"{UI_TEXT['stato_corrente_personaggio']}\n{stato}"
+        )
+        self._imposta_testo_sola_lettura(self.testo_personaggio, testo)
+
+    def _mostra_documento_lore(self, _evento: object | None = None) -> None:
+        selezione = self.albero_lore.selection()
+        if not selezione:
+            return
+        documento = self._documenti_lore[int(selezione[0])]
+        testo = f"{documento.title}\nTipo: {self._etichetta_tecnica(documento.document_type)}\n\n{documento.content}"
+        self._imposta_testo_sola_lettura(self.testo_lore, testo)
+
+    def _mostra_media(self, _evento: object | None = None) -> None:
+        selezione = self.albero_media.selection()
+        if not selezione or self.mondo_corrente is None:
+            return
+        media = self._media_completi[int(selezione[0])]
+        self._immagine_media = None
+        if not anteprima_media_supportata(media.mime_type):
+            self.etichetta_anteprima_media.configure(
+                image="", text=f"{media.title}\n\n{UI_TEXT['anteprima_non_disponibile']}"
+            )
+            return
+        try:
+            contenuto = self.servizio.carica_media_contenuto(
+                self.mondo_corrente.id, media.media_id
+            )
+            immagine = tk.PhotoImage(data=base64.b64encode(contenuto))
+            fattore = max(1, (max(immagine.width(), immagine.height()) + 639) // 640)
+            if fattore > 1:
+                immagine = immagine.subsample(fattore, fattore)
+            self._immagine_media = immagine
+            self.etichetta_anteprima_media.configure(image=immagine, text=media.alt_text)
+        except (tk.TclError, ErroreHaria):
+            self.etichetta_anteprima_media.configure(
+                image="", text=f"{media.title}\n\n{UI_TEXT['anteprima_non_disponibile']}"
+            )
 
     def _aggiorna_stato_mondo(self) -> None:
         for elemento in self.albero_stato_mondo.get_children():
@@ -1155,14 +1429,58 @@ class ApplicazioneHaria:
             return
         if not self._puo_proseguire_con_modifiche("importare un altro mondo"):
             return
-        try:
-            mondo = self.servizio.importa_da_cartella(cartella)
-            self._mostra_mondo(mondo)
-            messagebox.showinfo(
-                UI_TEXT["operazione_completata"], UI_TEXT["importazione_completata"]
-            )
-        except ErroreHaria as errore:
-            messagebox.showerror(UI_TEXT["errore"], str(errore))
+        self._avvia_importazione(cartella, importa_pacchetto_da_cartella)
+
+    def _importa_zip_da_interfaccia(self) -> None:
+        archivio = filedialog.askopenfilename(
+            title=UI_TEXT["seleziona_zip"],
+            filetypes=(("Archivi ZIP", "*.zip"),),
+        )
+        if not archivio:
+            return
+        if not self._puo_proseguire_con_modifiche("importare un altro mondo"):
+            return
+        self._avvia_importazione(archivio, importa_pacchetto_da_zip)
+
+    def _avvia_importazione(
+        self,
+        percorso: str,
+        lettore: Callable[[str], PacchettoMondo],
+    ) -> None:
+        if not self._coordinatore_importazione.avvia(
+            "importazione", lettore, percorso
+        ):
+            return
+        self._origine_importazione = percorso
+        self.pulsante_importa_cartella.configure(state=tk.DISABLED)
+        self.pulsante_importa_zip.configure(state=tk.DISABLED)
+        self.etichetta_stato.configure(text=UI_TEXT["importazione_in_corso"])
+
+    def _programma_controllo_importazione(self) -> None:
+        if self._chiusura_in_corso:
+            return
+        for esito in self._coordinatore_importazione.raccogli():
+            self.pulsante_importa_cartella.configure(state=tk.NORMAL)
+            self.pulsante_importa_zip.configure(state=tk.NORMAL)
+            if esito.errore is not None:
+                messaggio = str(esito.errore) if isinstance(esito.errore, ErroreHaria) else "L'importazione non è riuscita."
+                self.etichetta_stato.configure(text=messaggio)
+                messagebox.showerror(UI_TEXT["errore"], messaggio)
+            elif isinstance(esito.risultato, PacchettoMondo):
+                try:
+                    mondo = self.servizio.importa_pacchetto_validato(
+                        esito.risultato, self._origine_importazione
+                    )
+                    self._mostra_mondo(mondo)
+                    messagebox.showinfo(
+                        UI_TEXT["operazione_completata"],
+                        UI_TEXT["importazione_completata"],
+                    )
+                except ErroreHaria as errore:
+                    messagebox.showerror(UI_TEXT["errore"], str(errore))
+        self._controllo_importazione_after = self.radice.after(
+            75, self._programma_controllo_importazione
+        )
 
     def _salva_da_interfaccia(self) -> None:
         self._salva_senza_dialogo(mostra_conferma=True)
@@ -1257,12 +1575,19 @@ class ApplicazioneHaria:
             return
         self._chiusura_in_corso = True
         self._coordinatore_ai.chiudi()
+        self._coordinatore_importazione.chiudi()
         if self._controllo_ai_after is not None:
             try:
                 self.radice.after_cancel(self._controllo_ai_after)
             except tk.TclError:
                 pass
             self._controllo_ai_after = None
+        if self._controllo_importazione_after is not None:
+            try:
+                self.radice.after_cancel(self._controllo_importazione_after)
+            except tk.TclError:
+                pass
+            self._controllo_importazione_after = None
         self.servizio.chiudi()
         self.radice.destroy()
 

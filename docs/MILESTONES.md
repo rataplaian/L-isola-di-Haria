@@ -38,11 +38,13 @@
 - interfaccia italiana in sola lettura;
 - nessuna scrittura, migrazione SQLite o dipendenza da Ollama.
 
-## M6 — Import Haria completo
-- JSON master;
-- immagini;
-- scenario;
-- personaggi.
+## M6 — Import Haria completo — infrastruttura implementata
+- JSON master `world.json` e manifest con SHA-256;
+- cartelle e ZIP sicuri, deterministici e compatibili con il formato legacy;
+- scenario, regole, stile, personaggi individuali, luoghi, oggetti, lore e timeline;
+- media conservati byte-identici e indicizzati senza duplicazione;
+- consultazione italiana di personaggi, lore, regole, stile e media;
+- pacchetto Haria locale parziale costruito dai soli materiali realmente disponibili.
 
 ## M7 — Simulazione fuori scena
 - processi;
