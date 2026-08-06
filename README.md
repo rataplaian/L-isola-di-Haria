@@ -129,6 +129,19 @@ precedente. La partita resta interamente locale e non aggiunge moderazione,
 blacklist o trasformazioni del testo narrativo. Ricerca semantica, simulazione
 fuori scena, salvataggi paralleli e rewind non sono ancora attivi.
 
+## Task 008.1 — Output narrativo strutturato
+
+Il turno narrativo invia a Ollama una proiezione compatibile del JSON Schema
+completo tramite il campo nativo `format`. Il prompt non duplica lo schema:
+richiama il contratto allegato e conserva le regole narrative e strutturali
+essenziali. Operazioni e memorie hanno varianti esplicite e non possono
+accettare proprietà appartenenti all'altro insieme.
+
+Se un primo output è un oggetto JSON leggibile ma strutturalmente errato,
+l'applicazione può inviare una sola richiesta automatica di correzione. JSON non
+valido, errori di rete, riferimenti inesistenti, incoerenze del mondo ed errori
+SQLite non vengono ritentati. Nessun tentativo scartato modifica il database.
+
 ## Requisiti
 
 - Python 3.11 o successivo;
@@ -210,10 +223,26 @@ python3 -m unittest discover -s tests -v
 python3 -m haria_engine --check
 ```
 
-La suite corrente contiene **275 test automatici** per Task 001–008. I test
-Ollama usano trasporti simulati e non
-effettuano richieste verso servizi reali; i test del validatore verificano
-anche che database e configurazione AI rimangano invariati.
+La suite corrente contiene **301 test automatici** per Task 001–008.3. I test
+Ollama usano trasporti simulati e non effettuano richieste verso servizi reali;
+i test del validatore verificano anche che database e configurazione AI
+rimangano invariati.
+
+Il collaudo locale con Ollama 0.32.6 ha dimostrato che la grammatica rifiuta i
+`maxLength` del contratto pari o superiori a 2.000. Il prompt e il parser
+conservano il contratto completo; il campo `format` riceve una proiezione
+deterministica che omette soltanto i `maxLength` superiori a 1.000. La
+grammatica così ottenuta viene compilata. Rimuovendo la copia testuale dello
+schema, il primo prompt di `sample_world` è sceso da 6.381 a 2.150 token.
+
+Con `qwen3:4b-instruct`, il contesto dichiarato dal modello è 262.144 token; il
+budget narrativo usato da Haria è deliberatamente il minimo collaudato di 4.096.
+Il primo turno reale ha richiesto 120,6 secondi e 290 token generati, il secondo
+con cronologia 241,4 secondi e 489 token. Entrambi sono stati salvati e ricaricati
+dallo stesso database. Una correzione strutturale reale separata ha usato 3.204
+token di prompt, ha generato 22 token in 29,9 secondi e non ha scritto dati.
+Durante le prove a 4.096, `/api/ps` ha riportato circa 66,5% del modello in VRAM
+e 33,5% in CPU. Durate e ripartizione dipendono dall'hardware locale.
 
 ## Dati e sicurezza dei sorgenti
 
@@ -228,4 +257,5 @@ Le motivazioni dello stack e i confini architetturali sono descritti in
 `docs/TASK_001_STATUS.md`, `docs/TASK_002_STATUS.md`,
 `docs/TASK_003_STATUS.md`, `docs/TASK_004_STATUS.md`,
 `docs/TASK_005_STATUS.md`, `docs/TASK_006_STATUS.md`,
-`docs/TASK_007_STATUS.md` e `docs/TASK_008_STATUS.md`.
+`docs/TASK_007_STATUS.md`, `docs/TASK_008_STATUS.md` e
+`docs/TASK_008_1_STATUS.md`.

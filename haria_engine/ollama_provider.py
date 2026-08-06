@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from typing import Protocol
+from typing import Final, Protocol
 from urllib.parse import urlsplit, urlunsplit
 
 from .ai_models import (
@@ -26,12 +26,15 @@ from .errors import (
     ErroreVersioneMancante,
 )
 from .http_transport import RispostaHTTP, TrasportoHTTP
+from .narrative_output_schema import schema_output_narrativo_ollama
 
 
 PROMPT_SISTEMA_PROVA = (
     "Rispondi brevemente per confermare che il modello locale funziona."
 )
 TESTO_PROVA_PREDEFINITO = "Conferma il funzionamento con una breve risposta."
+# Minimo verificato con il primo turno, la cronologia e la correzione strutturale.
+NUM_CTX_NARRATIVO_OLLAMA: Final = 4096
 
 
 class ProviderLLM(Protocol):
@@ -118,10 +121,18 @@ class OllamaProvider:
             raise ErroreModelloNonDisponibile(
                 "Seleziona un modello Ollama prima di iniziare il turno narrativo."
             )
-        return self._genera_da_messaggi(messaggi)
+        return self._genera_da_messaggi(
+            messaggi,
+            format_json_schema=schema_output_narrativo_ollama(),
+            num_ctx=NUM_CTX_NARRATIVO_OLLAMA,
+        )
 
     def _genera_da_messaggi(
-        self, messaggi: tuple[MessaggioChat, ...]
+        self,
+        messaggi: tuple[MessaggioChat, ...],
+        *,
+        format_json_schema: dict[str, object] | None = None,
+        num_ctx: int | None = None,
     ) -> RispostaTestuale:
         payload = {
             "model": self.configurazione.ollama_model,
@@ -131,6 +142,10 @@ class OllamaProvider:
                 for messaggio in messaggi
             ],
         }
+        if format_json_schema is not None:
+            payload["format"] = format_json_schema
+        if num_ctx is not None:
+            payload["options"] = {"num_ctx": num_ctx}
         dati = self._richiedi_json(
             "POST",
             "/api/chat",
@@ -192,5 +207,6 @@ def _endpoint(radice: str, percorso: str) -> str:
 def _verifica_status(risposta: RispostaHTTP) -> None:
     if not 200 <= risposta.status <= 299:
         raise ErroreHTTPProvider(
-            "Il servizio Ollama ha restituito un errore HTTP."
+            "Il servizio Ollama ha restituito un errore HTTP.",
+            status_code=risposta.status,
         )

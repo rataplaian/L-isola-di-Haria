@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import socket
 import urllib.error
 import urllib.request
@@ -17,6 +18,7 @@ from .errors import (
 
 
 LIMITE_CORPO_HTTP = 1024 * 1024
+LIMITE_DETTAGLIO_ERRORE_HTTP = 500
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,6 +50,50 @@ class _NessunRedirect(urllib.request.HTTPRedirectHandler):
         newurl: str,
     ) -> None:
         return None
+
+
+def _dettaglio_errore_http(valore: object, profondita: int = 0) -> str | None:
+    if profondita > 6:
+        return None
+    if isinstance(valore, dict):
+        for chiave in ("message", "error"):
+            if chiave in valore:
+                dettaglio = _dettaglio_errore_http(
+                    valore[chiave], profondita + 1
+                )
+                if dettaglio:
+                    return dettaglio
+        return None
+    if not isinstance(valore, str):
+        return None
+    testo = valore.strip()
+    if not testo:
+        return None
+    if testo.startswith("{"):
+        try:
+            return _dettaglio_errore_http(json.loads(testo), profondita + 1)
+        except json.JSONDecodeError:
+            return None
+    normalizzato = " ".join(testo.split())
+    if (
+        not normalizzato
+        or len(normalizzato) > LIMITE_DETTAGLIO_ERRORE_HTTP
+        or "<" in normalizzato
+        or ">" in normalizzato
+    ):
+        return None
+    return normalizzato
+
+
+def _leggi_dettaglio_http(errore: urllib.error.HTTPError) -> str | None:
+    try:
+        corpo = errore.read(LIMITE_CORPO_HTTP + 1)
+        if len(corpo) > LIMITE_CORPO_HTTP:
+            return None
+        dati = json.loads(corpo.decode("utf-8"))
+    except (AttributeError, OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    return _dettaglio_errore_http(dati)
 
 
 class TrasportoUrllib:
@@ -93,8 +139,16 @@ class TrasportoUrllib:
         except ErroreCorpoHTTP:
             raise
         except urllib.error.HTTPError as errore:
+            dettaglio = _leggi_dettaglio_http(errore)
+            if dettaglio:
+                raise ErroreHTTPProvider(
+                    f"Ollama ha restituito un errore HTTP {errore.code}: "
+                    f"{dettaglio}.",
+                    status_code=errore.code,
+                ) from errore
             raise ErroreHTTPProvider(
-                "Il servizio Ollama ha restituito un errore HTTP."
+                "Il servizio Ollama ha restituito un errore HTTP.",
+                status_code=errore.code,
             ) from errore
         except (TimeoutError, socket.timeout) as errore:
             raise ErroreTimeoutOllama(

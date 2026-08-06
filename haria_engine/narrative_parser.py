@@ -6,11 +6,19 @@ import json
 from collections.abc import Mapping
 from typing import Final
 
+from .errors import ErroreTurnoNarrativo
 from .memories import KNOWLEDGE_TYPES, MEMORY_ROLES, SOURCE_TYPES
 from .narrative_models import (
     AssociazioneMemoriaCandidata,
     MemoriaCandidata,
     TurnoNarrativoProposto,
+)
+from .narrative_output_schema import (
+    MAX_ELAPSED_MINUTES,
+    MAX_MEMORIES,
+    MAX_MEMORY_CONTENT_CHARS,
+    MAX_NARRATIVE_CHARS,
+    MAX_OPERATIONS,
 )
 from .validation_models import (
     PropostaCambioStato,
@@ -23,40 +31,60 @@ from .validation_models import (
 
 
 MAX_OUTPUT_CHARS: Final = 100_000
-MAX_NARRATIVE_CHARS: Final = 20_000
-MAX_OPERATIONS: Final = 50
-MAX_MEMORIES: Final = 50
-MAX_MEMORY_CONTENT_CHARS: Final = 4_000
-MAX_ELAPSED_MINUTES: Final = 10_080
 
 TOP_LEVEL_KEYS: Final = frozenset(
     {"narrative", "elapsed_minutes", "operations", "memories"}
 )
 
 
-class ErroreOutputNarrativo(ValueError):
+class ErroreOutputNarrativo(ErroreTurnoNarrativo, ValueError):
     """La risposta del modello non rispetta il contratto narrativo."""
+
+
+class ErroreOutputNarrativoNonRiparabile(ErroreOutputNarrativo):
+    """L'output non è un singolo oggetto JSON riparabile automaticamente."""
+
+
+class ErroreStrutturaOutputNarrativo(ErroreOutputNarrativo):
+    """Un oggetto JSON leggibile non rispetta la struttura richiesta."""
 
 
 def parse_output_narrativo(raw: str) -> TurnoNarrativoProposto:
     """Converte un singolo oggetto JSON in modelli tipizzati e immutabili."""
 
     if not isinstance(raw, str):
-        raise ErroreOutputNarrativo("La risposta narrativa deve essere testuale.")
+        raise ErroreOutputNarrativoNonRiparabile(
+            "La risposta narrativa deve essere testuale."
+        )
     if len(raw) > MAX_OUTPUT_CHARS:
-        raise ErroreOutputNarrativo("La risposta narrativa supera il limite consentito.")
+        raise ErroreOutputNarrativoNonRiparabile(
+            "La risposta narrativa supera il limite consentito."
+        )
     if not raw.strip():
-        raise ErroreOutputNarrativo("La risposta narrativa è vuota.")
+        raise ErroreOutputNarrativoNonRiparabile("La risposta narrativa è vuota.")
     try:
         dati = json.loads(raw)
     except json.JSONDecodeError as errore:
-        raise ErroreOutputNarrativo(
+        raise ErroreOutputNarrativoNonRiparabile(
             "Il modello non ha restituito un singolo oggetto JSON valido."
         ) from errore
     if not isinstance(dati, dict):
-        raise ErroreOutputNarrativo(
+        raise ErroreOutputNarrativoNonRiparabile(
             "La risposta narrativa deve essere un oggetto JSON."
         )
+    try:
+        return _parse_oggetto_narrativo(dati)
+    except ErroreStrutturaOutputNarrativo:
+        raise
+    except ErroreOutputNarrativo as errore:
+        raise ErroreStrutturaOutputNarrativo(str(errore)) from errore
+
+
+def _parse_oggetto_narrativo(
+    dati: dict[str, object],
+) -> TurnoNarrativoProposto:
+    """Valida la struttura dopo che sintassi e oggetto radice sono certi."""
+
     _richiedi_chiavi_esatte(dati, TOP_LEVEL_KEYS, "risposta narrativa")
 
     narrative = _testo_obbligatorio(

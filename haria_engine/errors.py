@@ -68,6 +68,10 @@ class ErroreTimeoutOllama(ErroreProviderAI):
 class ErroreHTTPProvider(ErroreProviderAI):
     """Il servizio Ollama ha restituito uno stato HTTP non riuscito."""
 
+    def __init__(self, messaggio: str, *, status_code: int | None = None) -> None:
+        super().__init__(messaggio)
+        self.status_code = status_code
+
 
 class ErroreRispostaJSON(ErroreProviderAI):
     """La risposta del provider non contiene JSON UTF-8 valido."""

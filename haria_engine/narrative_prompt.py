@@ -2,48 +2,9 @@
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
 
 from .ai_models import MessaggioChat
-
-
-OUTPUT_SCHEMA = {
-    "narrative": "stringa italiana non vuota",
-    "elapsed_minutes": "intero da 0 a 10080",
-    "operations": [
-        {
-            "type": "move | transfer | state_change | event | epistemic",
-            "...": "campi specifici del tipo; nessun campo aggiuntivo",
-        }
-    ],
-    "memories": [
-        {
-            "character_id": "ID del personaggio che apprende",
-            "knowledge_type": (
-                "observed_fact | reported_fact | inference | belief | "
-                "canonical_knowledge"
-            ),
-            "source_type": (
-                "direct_observation | told_by_character | inference | "
-                "imported_background | self_experience"
-            ),
-            "source_entity_id": "ID oppure null",
-            "certainty": "intero da 0 a 100",
-            "content": "testo ricordato",
-            "interpretation": "testo oppure null",
-            "associated_emotion": "testo oppure null",
-            "operation_index": "indice zero-based dell'operazione oppure null",
-            "entities": [
-                {
-                    "entity_id": "ID",
-                    "role": "subject | source | location | related",
-                }
-            ],
-            "source_memory_ids": ["ID memoria già esistente"],
-        }
-    ],
-}
 
 
 @dataclass(frozen=True, slots=True)
@@ -91,7 +52,6 @@ def formatta_prompt_visibile(
 
 
 def _prompt_sistema(player_name: str) -> str:
-    schema = json.dumps(OUTPUT_SCHEMA, ensure_ascii=False, indent=2)
     return f"""Sei il motore narrativo locale di un mondo persistente.
 
 SEPARAZIONE DEL CONTROLLO
@@ -121,20 +81,42 @@ FORMATO OBBLIGATORIO
 - Rispondi con un unico oggetto JSON valido.
 - Non usare Markdown, blocchi di codice, prefazioni o testo dopo il JSON.
 - Usa esattamente le quattro chiavi principali mostrate sotto.
-- Non aggiungere campi non previsti.
+- operations contiene esclusivamente cambiamenti del mondo.
+- memories contiene esclusivamente ciò che un personaggio apprende, ricorda, crede o deduce.
+- Non copiare campi tra operations e memories.
+- Ogni oggetto può contenere soltanto le proprietà previste dal proprio schema.
+- Non inventare ID e non aggiungere proprietà "utili" non richieste.
 - Se non servono operazioni o memorie, usa elenchi vuoti.
 - Il testo narrativo deve essere in italiano salvo diversa indicazione esplicita del mondo.
 
-SCHEMA:
-{schema}
-
-OPERAZIONI:
-- move: type, entity_id, location_id, reason; opzionali actor_id, occurred_at, memory_ids.
-- transfer: type, object_id, holder_id, reason; opzionali actor_id, occurred_at, memory_ids.
-- state_change: type, target_id, reason e almeno uno tra status, condition, accessibility; opzionali actor_id, occurred_at, memory_ids.
-- event: type, event_type, reason; opzionali actor_id, target_id, location_id, occurred_at, memory_ids.
-- epistemic: type, actor_id, reason; opzionali target_id, location_id, occurred_at, memory_ids.
+CONTRATTO STRUTTURALE
+- La struttura esatta è imposta dal JSON Schema allegato alla richiesta locale.
+- Restituisci esattamente narrative, elapsed_minutes, operations e memories.
 """
+
+
+def costruisci_messaggi_correzione(
+    messaggi_originali: tuple[MessaggioChat, ...],
+    prima_risposta: str,
+    errore_strutturale: str,
+) -> tuple[MessaggioChat, ...]:
+    """Aggiunge alla richiesta originale un solo dialogo di riparazione."""
+
+    istruzione = f"""La risposta precedente non rispetta il contratto strutturale.
+
+Errore preciso: {errore_strutturale}
+
+Correggi soltanto la struttura e restituisci esclusivamente il JSON corretto.
+Conserva per quanto possibile narrazione, tempo e intenzione.
+Non inventare nuovi fatti o ID e non aggiungere nuove azioni.
+Non trasformare automaticamente campi ambigui in memorie.
+Ometti un elemento non rappresentabile invece di inventare dati.
+Rispetta esattamente lo stesso JSON Schema già fornito."""
+    return (
+        *messaggi_originali,
+        MessaggioChat("assistant", prima_risposta),
+        MessaggioChat("user", istruzione),
+    )
 
 
 def _prompt_utente(contesto: ContestoTurnoNarrativo) -> str:
