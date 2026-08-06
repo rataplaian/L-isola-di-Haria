@@ -150,6 +150,46 @@ class TestContrattoOutputNarrativo(unittest.TestCase):
                 self.assertFalse(campi_memoria & set(variante["properties"]))
         self.assertIn("allOf", per_tipo["state_change"])
 
+    def test_epistemic_richiede_actor_id_stringa_non_nulla(self) -> None:
+        varianti = self.schema["properties"]["operations"]["items"]["oneOf"]
+        epistemic = next(
+            voce
+            for voce in varianti
+            if voce["properties"]["type"]["const"] == "epistemic"
+        )
+        self.assertIn("actor_id", epistemic["required"])
+        actor_id = epistemic["properties"]["actor_id"]
+        self.assertEqual("string", actor_id["type"])
+        self.assertEqual(1, actor_id["minLength"])
+        self.assertNotIn("anyOf", actor_id)
+
+    def test_schema_serializzato_non_contiene_pattern(self) -> None:
+        def verifica(valore: object) -> None:
+            if isinstance(valore, dict):
+                self.assertNotIn("pattern", valore)
+                for elemento in valore.values():
+                    verifica(elemento)
+            elif isinstance(valore, list):
+                for elemento in valore:
+                    verifica(elemento)
+
+        verifica(json.loads(json.dumps(self.schema, ensure_ascii=False)))
+
+    def test_parser_rifiuta_testo_obbligatorio_composto_da_spazi(self) -> None:
+        dati = json.loads(
+            output_valido(
+                operations=[
+                    {
+                        "type": "epistemic",
+                        "actor_id": "   ",
+                        "reason": "Il personaggio apprende un fatto.",
+                    }
+                ]
+            )
+        )
+        with self.assertRaises(ErroreStrutturaOutputNarrativo):
+            parse_output_narrativo(json.dumps(dati, ensure_ascii=False))
+
     def test_memorie_pubblicizzano_solo_combinazioni_generabili(self) -> None:
         testo = json.dumps(self.schema, ensure_ascii=False)
         self.assertNotIn("canonical_knowledge", testo)

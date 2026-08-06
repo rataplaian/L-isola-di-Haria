@@ -20,7 +20,6 @@ def _testo(max_length: int) -> dict[str, object]:
         "type": "string",
         "minLength": 1,
         "maxLength": max_length,
-        "pattern": r"\S",
     }
 
 
@@ -217,6 +216,7 @@ _SCHEMA_MUTABILE: dict[str, object] = {
                         "epistemic",
                         ("actor_id",),
                         {
+                            "actor_id": _id(),
                             "target_id": _id_o_null(),
                             "location_id": _id_o_null(),
                         },

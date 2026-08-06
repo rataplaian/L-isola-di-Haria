@@ -34,9 +34,9 @@ correzione riesce, `prompt_text` conserva la richiesta finale completa e
 
 ## Test automatici
 
-- test Task 008.1: 11/11;
+- test Task 008.1: 14/14;
 - regressione mirata Task 007 + Task 008 + fondazione Task 008: 57/57;
-- suite completa: 292/292;
+- suite completa: 295/295;
 - trasporti Ollama simulati, nessun servizio reale richiesto.
 
 Il controllo con un database temporaneo nuovo è riuscito. Il comando senza
