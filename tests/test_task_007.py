@@ -17,6 +17,7 @@ from haria_engine.http_transport import RispostaHTTP
 from haria_engine.llm_service import ServizioAI
 from haria_engine.narrative_prompt import formatta_prompt_visibile
 from haria_engine.narrative_output_schema import schema_output_narrativo_ollama
+from haria_engine.ollama_provider import NUM_CTX_NARRATIVO_OLLAMA
 from haria_engine.service import ServizioMondi
 from tests.test_task_006 import crea_pacchetto_completo
 
@@ -86,6 +87,9 @@ class TestProviderNarrativo(unittest.TestCase):
             payload["messages"],
         )
         self.assertEqual(schema_output_narrativo_ollama(), payload["format"])
+        self.assertEqual(
+            {"num_ctx": NUM_CTX_NARRATIVO_OLLAMA}, payload["options"]
+        )
 
     def test_turno_non_interroga_api_tags(self) -> None:
         trasporto = TrasportoSimulato(

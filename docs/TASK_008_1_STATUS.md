@@ -1,11 +1,13 @@
-# Stato Task 008.1–008.2
+# Stato Task 008.1–008.3
 
 ## Risultato
 
 Il contratto dell'output narrativo è un JSON Schema immutabile completo usato
-dal prompt, dal parser e dai test applicativi. Le cinque operazioni e le quattro
-forme generabili di memoria sono separate tramite varianti esplicite e
-rifiutano proprietà estranee.
+dal parser, dalla validazione e dai test applicativi. Le cinque operazioni e le
+quattro forme generabili di memoria sono separate tramite varianti esplicite e
+rifiutano proprietà estranee. Il prompt non ne mantiene una seconda copia:
+rimanda allo schema allegato e conserva soltanto le istruzioni narrative e
+strutturali essenziali.
 
 La richiesta narrativa a `/api/chat` usa `stream: false` e passa nel campo
 nativo `format` una proiezione deterministica del contratto completo. La prova
@@ -57,11 +59,40 @@ validazione e il piano finali viene invocata la transazione Task 008. Se la
 correzione riesce, `prompt_text` conserva la richiesta finale completa e
 `raw_model_output` conserva esclusivamente la seconda risposta accettata.
 
+## Budget del contesto e collaudo reale
+
+`POST /api/show` su Ollama 0.32.6 ha riportato per `qwen3:4b-instruct` un
+`qwen3.context_length` pari a 262.144. Il prompt precedente, con lo schema
+duplicato nel messaggio di sistema, non ha completato entro 300 secondi nelle
+prove a 8.192, 12.288 e 16.384; `/api/ps` ha confermato i tre contesti allocati
+e una quota VRAM decrescente di circa 57,8%, 48,5% e 44,3%.
+
+Il prompt conciso ha ridotto il primo input reale da 6.381 a 2.150 token. Il
+budget definitivo `NUM_CTX_NARRATIVO_OLLAMA` è 4.096: è il valore minimo che ha
+completato primo turno, secondo turno con cronologia e correzione strutturale.
+Sul computer di collaudo `/api/ps` ha indicato circa 2,35 GB in VRAM e 1,18 GB
+in CPU, equivalenti al 66,5% e 33,5% del modello caricato.
+
+Il primo turno ha prodotto 290 token in 120,6 secondi; il secondo 489 token in
+241,4 secondi. Entrambi hanno richiesto una sola chiamata, sono stati persistiti
+con sequenza 1 e 2 e hanno creato una memoria ciascuno senza eventi. Dopo la
+chiusura completa, input, narrazioni, `prompt_text`, `raw_model_output`, tempo e
+conteggi sono stati riletti dallo stesso database; `PRAGMA quick_check` è `ok`.
+
+Una richiesta reale di correzione con una risposta assistant sintetica
+incompleta ha usato 3.204 token di prompt e 22 token di output, concludendo in
+29,9 secondi. Il parser ha accettato la risposta corretta e il database è
+rimasto invariato a due turni, zero eventi e sei memorie.
+
+`options.num_ctx` viene aggiunto esclusivamente alle generazioni narrative e
+alla loro eventuale unica correzione. La prova semplice delle Impostazioni AI
+non riceve né `format` né il budget narrativo.
+
 ## Test automatici
 
-- test Task 008.1–008.2: 19/19;
+- test Task 008.1–008.3: 20/20;
 - regressione mirata Task 007 + Task 008 + fondazione Task 008: 57/57;
-- suite completa: 300/300;
+- suite completa: 301/301;
 - trasporti Ollama simulati, nessun servizio reale richiesto.
 
 Il controllo con un database temporaneo nuovo è riuscito. Il comando senza
@@ -69,17 +100,14 @@ Il controllo con un database temporaneo nuovo è riuscito. Il comando senza
 preesistente non completa la migrazione dallo schema 4 allo schema 5. Il task
 non modifica né ripara quel database e non introduce migrazioni.
 
-## Collaudo reale e limite residuo
+## Limiti residui
 
-Il nuovo collaudo end-to-end usa Ollama 0.32.6, `qwen3:4b-instruct`, timeout 300,
-un database temporaneo nuovo e `sample_world`. La grammatica proiettata supera
-la compilazione: non compare più `failed to parse grammar`. La richiesta viene
-però respinta prima della generazione perché i 6.381 token complessivi superano
-il contesto di 4.096 token disponibile nell'istanza provata.
+Le durate dipendono dal modello, dalla lunghezza casuale dell'output e dalla
+ripartizione tra CPU e GPU. Una prova diagnostica del secondo turno a 4.096 e
+una a 8.192 hanno raggiunto il timeout senza scritture; una successiva prova a
+4.096 ha completato correttamente in 241,4 secondi. Il budget non garantisce
+quindi prestazioni uniformi, ma è il più basso che ha soddisfatto il collaudo
+completo senza ridurre l'output con `num_predict` o alterare il modello.
 
-Il nuovo errore viene mostrato come HTTP 400 con dettaglio locale leggibile. Non
-viene avviata la correzione, non viene salvato alcun turno e la fotografia del
-database resta identica: zero turni ed eventi, quattro memorie importate,
-sessione ancora al turno 1, stato invariato. La gestione della dimensione del
-contesto non viene ampliata in Task 008.2. Schema SQLite, timeout, prompt adulto,
-moderazione e architettura dei turni restano invariati.
+Schema SQLite, timeout, prompt adulto, moderazione e architettura dei turni
+restano invariati.

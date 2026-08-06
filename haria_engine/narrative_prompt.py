@@ -5,7 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from .ai_models import MessaggioChat
-from .narrative_output_schema import serializza_schema_output_narrativo
 
 
 @dataclass(frozen=True, slots=True)
@@ -53,7 +52,6 @@ def formatta_prompt_visibile(
 
 
 def _prompt_sistema(player_name: str) -> str:
-    schema = serializza_schema_output_narrativo()
     return f"""Sei il motore narrativo locale di un mondo persistente.
 
 SEPARAZIONE DEL CONTROLLO
@@ -91,8 +89,9 @@ FORMATO OBBLIGATORIO
 - Se non servono operazioni o memorie, usa elenchi vuoti.
 - Il testo narrativo deve essere in italiano salvo diversa indicazione esplicita del mondo.
 
-SCHEMA JSON OBBLIGATORIO:
-{schema}
+CONTRATTO STRUTTURALE
+- La struttura esatta è imposta dal JSON Schema allegato alla richiesta locale.
+- Restituisci esattamente narrative, elapsed_minutes, operations e memories.
 """
 
 

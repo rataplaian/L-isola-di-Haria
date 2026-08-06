@@ -19,6 +19,7 @@ from haria_engine.http_transport import (
     TrasportoUrllib,
 )
 from haria_engine.llm_service import ServizioAI
+from haria_engine.ollama_provider import NUM_CTX_NARRATIVO_OLLAMA
 from haria_engine.narrative_output_schema import (
     NARRATIVE_OUTPUT_SCHEMA,
     schema_output_narrativo,
@@ -264,7 +265,7 @@ class TestContrattoOutputNarrativo(unittest.TestCase):
         ):
             self.assertNotIn("source_memory_ids", per_fonte[fonte]["properties"])
 
-    def test_prompt_serializza_la_stessa_fonte_del_provider(self) -> None:
+    def test_prompt_rimanda_al_contratto_senza_duplicare_lo_schema(self) -> None:
         contesto = ContestoTurnoNarrativo(
             world_title="Mondo",
             player_name="Luca",
@@ -272,12 +273,21 @@ class TestContrattoOutputNarrativo(unittest.TestCase):
             scenario="Scenario",
         )
         sistema = costruisci_messaggi_turno(contesto)[0].contenuto
-        dopo_marcatore = sistema.split("SCHEMA JSON OBBLIGATORIO:\n", 1)[1]
-        schema_prompt, indice = json.JSONDecoder().raw_decode(dopo_marcatore)
-        self.assertFalse(dopo_marcatore[indice:].strip())
-        self.assertEqual(self.schema, schema_prompt)
+        self.assertNotIn(json.dumps(self.schema, ensure_ascii=False), sistema)
+        self.assertNotIn('"additionalProperties"', sistema)
+        self.assertIn("JSON Schema allegato alla richiesta locale", sistema)
+        self.assertIn(
+            "narrative, elapsed_minutes, operations e memories", sistema
+        )
         self.assertIn("operations contiene esclusivamente cambiamenti", sistema)
+        self.assertIn("memories contiene esclusivamente", sistema)
         self.assertIn("Non copiare campi", sistema)
+        self.assertIn("Non inventare ID", sistema)
+        self.assertIn("usa elenchi vuoti", sistema)
+        self.assertIn("controlla esclusivamente Luca", sistema)
+        self.assertIn("Le NPC hanno volontà", sistema)
+        self.assertIn("NATURA ADULTA DI HARIA", sistema)
+        self.assertIn("Il database e il contesto fornito sono la fonte", sistema)
 
     def test_errore_reale_e_strutturale_e_preciso(self) -> None:
         with self.assertRaises(ErroreStrutturaOutputNarrativo) as contesto:
@@ -315,8 +325,10 @@ class TestPayloadOllamaStrutturato(unittest.TestCase):
         self.assertIs(payload["stream"], False)
         self.assertEqual(schema_output_narrativo_ollama(), payload["format"])
         self.assertNotEqual(schema_output_narrativo(), payload["format"])
+        self.assertEqual(
+            {"num_ctx": NUM_CTX_NARRATIVO_OLLAMA}, payload["options"]
+        )
         self.assertNotIn("tools", payload)
-        self.assertNotIn("options", payload)
 
     def test_prova_semplice_non_invia_schema_narrativo(self) -> None:
         trasporto = TrasportoSequenziale(
@@ -328,6 +340,7 @@ class TestPayloadOllamaStrutturato(unittest.TestCase):
         )
         payload = json.loads(trasporto.richieste[1]["corpo"].decode("utf-8"))
         self.assertNotIn("format", payload)
+        self.assertNotIn("options", payload)
 
 
 class TestDiagnosticaHTTPTask0082(unittest.TestCase):
@@ -396,11 +409,28 @@ class TestDiagnosticaHTTPTask0082(unittest.TestCase):
             trasporto.richiedi(
                 "POST", "http://localhost:11434/api/chat", timeout=300
             )
-        self.assertEqual(LIMITE_CORPO_HTTP, causa.fp.tell())
+        self.assertEqual(LIMITE_CORPO_HTTP + 1, causa.fp.tell())
         self.assertEqual(
             "Il servizio Ollama ha restituito un errore HTTP.",
             str(contesto.exception),
         )
+
+    def test_http_400_non_decodifica_json_valido_oltre_un_mebibyte(self) -> None:
+        dettaglio = "dettaglio da non esporre"
+        prefisso = json.dumps({"error": dettaglio}).encode("utf-8")
+        corpo = prefisso + b" " * (LIMITE_CORPO_HTTP + 1 - len(prefisso))
+        trasporto, causa = self.trasporto_con_errore(corpo)
+        with self.assertRaises(ErroreHTTPProvider) as contesto:
+            trasporto.richiedi(
+                "POST", "http://localhost:11434/api/chat", timeout=300
+            )
+        self.assertEqual(400, contesto.exception.status_code)
+        self.assertEqual(LIMITE_CORPO_HTTP + 1, causa.fp.tell())
+        self.assertEqual(
+            "Il servizio Ollama ha restituito un errore HTTP.",
+            str(contesto.exception),
+        )
+        self.assertNotIn(dettaglio, str(contesto.exception))
 
 
 class BaseRiparazioneTurno(unittest.TestCase):
@@ -546,6 +576,13 @@ class TestRiparazioneSingola(BaseRiparazioneTurno):
             for richiesta in trasporto.richieste
         )
         self.assertEqual(payload_iniziale["format"], payload_correzione["format"])
+        self.assertEqual(
+            {"num_ctx": NUM_CTX_NARRATIVO_OLLAMA},
+            payload_iniziale["options"],
+        )
+        self.assertEqual(
+            payload_iniziale["options"], payload_correzione["options"]
+        )
         self.assertEqual(
             payload_iniziale["messages"], payload_correzione["messages"][:2]
         )

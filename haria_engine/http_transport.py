@@ -87,7 +87,9 @@ def _dettaglio_errore_http(valore: object, profondita: int = 0) -> str | None:
 
 def _leggi_dettaglio_http(errore: urllib.error.HTTPError) -> str | None:
     try:
-        corpo = errore.read(LIMITE_CORPO_HTTP)
+        corpo = errore.read(LIMITE_CORPO_HTTP + 1)
+        if len(corpo) > LIMITE_CORPO_HTTP:
+            return None
         dati = json.loads(corpo.decode("utf-8"))
     except (AttributeError, OSError, UnicodeDecodeError, json.JSONDecodeError):
         return None
