@@ -222,10 +222,18 @@ python3 -m unittest discover -s tests -v
 python3 -m haria_engine --check
 ```
 
-La suite corrente contiene **295 test automatici** per Task 001–008.1. I test
-Ollama usano trasporti simulati e non
-effettuano richieste verso servizi reali; i test del validatore verificano
-anche che database e configurazione AI rimangano invariati.
+La suite corrente contiene **300 test automatici** per Task 001–008.2. I test
+Ollama usano trasporti simulati e non effettuano richieste verso servizi reali;
+i test del validatore verificano anche che database e configurazione AI
+rimangano invariati.
+
+Il collaudo locale con Ollama 0.32.6 ha dimostrato che la grammatica rifiuta i
+`maxLength` del contratto pari o superiori a 2.000. Il prompt e il parser
+conservano il contratto completo; il campo `format` riceve una proiezione
+deterministica che omette soltanto i `maxLength` superiori a 1.000. La
+grammatica così ottenuta viene compilata, ma il turno completo di `sample_world`
+richiede 6.381 token e supera il contesto di 4.096 token disponibile nel modello
+locale provato: nessuna risposta o scrittura viene prodotta in quel caso.
 
 ## Dati e sicurezza dei sorgenti
 

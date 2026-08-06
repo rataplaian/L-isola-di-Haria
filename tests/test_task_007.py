@@ -16,7 +16,7 @@ from haria_engine.errors import ErroreRispostaAssistant, ErroreTurnoNarrativo
 from haria_engine.http_transport import RispostaHTTP
 from haria_engine.llm_service import ServizioAI
 from haria_engine.narrative_prompt import formatta_prompt_visibile
-from haria_engine.narrative_output_schema import schema_output_narrativo
+from haria_engine.narrative_output_schema import schema_output_narrativo_ollama
 from haria_engine.service import ServizioMondi
 from tests.test_task_006 import crea_pacchetto_completo
 
@@ -85,7 +85,7 @@ class TestProviderNarrativo(unittest.TestCase):
             ],
             payload["messages"],
         )
-        self.assertEqual(schema_output_narrativo(), payload["format"])
+        self.assertEqual(schema_output_narrativo_ollama(), payload["format"])
 
     def test_turno_non_interroga_api_tags(self) -> None:
         trasporto = TrasportoSimulato(

@@ -26,7 +26,7 @@ from .errors import (
     ErroreVersioneMancante,
 )
 from .http_transport import RispostaHTTP, TrasportoHTTP
-from .narrative_output_schema import schema_output_narrativo
+from .narrative_output_schema import schema_output_narrativo_ollama
 
 
 PROMPT_SISTEMA_PROVA = (
@@ -120,7 +120,7 @@ class OllamaProvider:
                 "Seleziona un modello Ollama prima di iniziare il turno narrativo."
             )
         return self._genera_da_messaggi(
-            messaggi, format_json_schema=schema_output_narrativo()
+            messaggi, format_json_schema=schema_output_narrativo_ollama()
         )
 
     def _genera_da_messaggi(
@@ -200,5 +200,6 @@ def _endpoint(radice: str, percorso: str) -> str:
 def _verifica_status(risposta: RispostaHTTP) -> None:
     if not 200 <= risposta.status <= 299:
         raise ErroreHTTPProvider(
-            "Il servizio Ollama ha restituito un errore HTTP."
+            "Il servizio Ollama ha restituito un errore HTTP.",
+            status_code=risposta.status,
         )

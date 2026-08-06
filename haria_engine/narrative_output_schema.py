@@ -13,6 +13,7 @@ MAX_OPERATIONS: Final = 50
 MAX_MEMORIES: Final = 50
 MAX_MEMORY_CONTENT_CHARS: Final = 4_000
 MAX_ELAPSED_MINUTES: Final = 10_080
+MAX_LENGTH_OLLAMA_COMPATIBILE: Final = 1_000
 
 
 def _testo(max_length: int) -> dict[str, object]:
@@ -302,6 +303,30 @@ def schema_output_narrativo() -> dict[str, object]:
     """Restituisce una copia JSON serializzabile del contratto immutabile."""
 
     return cast(dict[str, object], _copia_json(NARRATIVE_OUTPUT_SCHEMA))
+
+
+def _proietta_per_ollama(valore: object) -> object:
+    if isinstance(valore, dict):
+        return {
+            chiave: _proietta_per_ollama(voce)
+            for chiave, voce in valore.items()
+            if not (
+                chiave == "maxLength"
+                and isinstance(voce, int)
+                and voce > MAX_LENGTH_OLLAMA_COMPATIBILE
+            )
+        }
+    if isinstance(valore, list):
+        return [_proietta_per_ollama(voce) for voce in valore]
+    return valore
+
+
+def schema_output_narrativo_ollama() -> dict[str, object]:
+    """Proietta il contratto nei vincoli compilabili dalla grammatica Ollama."""
+
+    return cast(
+        dict[str, object], _proietta_per_ollama(schema_output_narrativo())
+    )
 
 
 def serializza_schema_output_narrativo() -> str:

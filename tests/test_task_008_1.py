@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import io
 import json
 import tempfile
 import threading
 import unittest
+import urllib.error
 from pathlib import Path
 from unittest import mock
 
@@ -11,11 +13,16 @@ from haria_engine.ai_models import ConfigurazioneAI, MessaggioChat, RispostaTest
 from haria_engine.app import ApplicazioneHaria, UI_TEXT
 from haria_engine.async_coordinator import EsitoAsincrono
 from haria_engine.errors import ErroreHTTPProvider, ErroreTimeoutOllama
-from haria_engine.http_transport import RispostaHTTP
+from haria_engine.http_transport import (
+    LIMITE_CORPO_HTTP,
+    RispostaHTTP,
+    TrasportoUrllib,
+)
 from haria_engine.llm_service import ServizioAI
 from haria_engine.narrative_output_schema import (
     NARRATIVE_OUTPUT_SCHEMA,
     schema_output_narrativo,
+    schema_output_narrativo_ollama,
 )
 from haria_engine.narrative_parser import (
     ErroreOutputNarrativoNonRiparabile,
@@ -175,6 +182,45 @@ class TestContrattoOutputNarrativo(unittest.TestCase):
 
         verifica(json.loads(json.dumps(self.schema, ensure_ascii=False)))
 
+    def test_proiezione_ollama_rimuove_solo_max_length_incompatibili(self) -> None:
+        def max_length_percorso(
+            valore: object, percorso: tuple[object, ...] = ()
+        ) -> dict[tuple[object, ...], int]:
+            trovati: dict[tuple[object, ...], int] = {}
+            if isinstance(valore, dict):
+                for chiave, elemento in valore.items():
+                    nuovo = (*percorso, chiave)
+                    if chiave == "maxLength":
+                        trovati[nuovo] = elemento
+                    trovati.update(max_length_percorso(elemento, nuovo))
+            elif isinstance(valore, list):
+                for indice, elemento in enumerate(valore):
+                    trovati.update(
+                        max_length_percorso(elemento, (*percorso, indice))
+                    )
+            return trovati
+
+        completo_prima = schema_output_narrativo()
+        proiezione = schema_output_narrativo_ollama()
+        completo_dopo = schema_output_narrativo()
+        self.assertEqual(completo_prima, completo_dopo)
+        self.assertEqual(proiezione, schema_output_narrativo_ollama())
+        completi = max_length_percorso(completo_prima)
+        proiettati = max_length_percorso(proiezione)
+        self.assertEqual(
+            {
+                percorso: limite
+                for percorso, limite in completi.items()
+                if limite <= 1_000
+            },
+            proiettati,
+        )
+        self.assertEqual(
+            {"narrative", "elapsed_minutes", "operations", "memories"},
+            set(proiezione["required"]),
+        )
+        self.assertIs(proiezione["additionalProperties"], False)
+
     def test_parser_rifiuta_testo_obbligatorio_composto_da_spazi(self) -> None:
         dati = json.loads(
             output_valido(
@@ -267,7 +313,8 @@ class TestPayloadOllamaStrutturato(unittest.TestCase):
         )
         payload = json.loads(trasporto.richieste[0]["corpo"].decode("utf-8"))
         self.assertIs(payload["stream"], False)
-        self.assertEqual(schema_output_narrativo(), payload["format"])
+        self.assertEqual(schema_output_narrativo_ollama(), payload["format"])
+        self.assertNotEqual(schema_output_narrativo(), payload["format"])
         self.assertNotIn("tools", payload)
         self.assertNotIn("options", payload)
 
@@ -281,6 +328,79 @@ class TestPayloadOllamaStrutturato(unittest.TestCase):
         )
         payload = json.loads(trasporto.richieste[1]["corpo"].decode("utf-8"))
         self.assertNotIn("format", payload)
+
+
+class TestDiagnosticaHTTPTask0082(unittest.TestCase):
+    @staticmethod
+    def trasporto_con_errore(
+        corpo: bytes,
+    ) -> tuple[TrasportoUrllib, urllib.error.HTTPError]:
+        causa = urllib.error.HTTPError(
+            "http://localhost:11434/api/chat",
+            400,
+            "Bad Request",
+            {},
+            io.BytesIO(corpo),
+        )
+        trasporto = TrasportoUrllib()
+        trasporto._opener = mock.Mock()
+        trasporto._opener.open.side_effect = causa
+        return trasporto, causa
+
+    def test_http_400_espone_solo_dettaglio_json_locale_sicuro(self) -> None:
+        corpo = json.dumps(
+            {
+                "error": json.dumps(
+                    {
+                        "error": {
+                            "code": 400,
+                            "message": (
+                                "Failed to initialize samplers: "
+                                "failed to parse grammar"
+                            ),
+                            "type": "invalid_request_error",
+                        }
+                    }
+                )
+            }
+        ).encode("utf-8")
+        trasporto, causa = self.trasporto_con_errore(corpo)
+        with self.assertRaisesRegex(
+            ErroreHTTPProvider,
+            r"HTTP 400: Failed to initialize samplers: failed to parse grammar\.",
+        ) as contesto:
+            trasporto.richiedi(
+                "POST", "http://localhost:11434/api/chat", timeout=300
+            )
+        self.assertIs(contesto.exception.__cause__, causa)
+        self.assertEqual(400, contesto.exception.status_code)
+        self.assertNotIn("invalid_request_error", str(contesto.exception))
+
+    def test_http_400_con_corpo_non_json_mantiene_messaggio_generico(self) -> None:
+        trasporto, _ = self.trasporto_con_errore(b"<html>segreto</html>")
+        with self.assertRaises(ErroreHTTPProvider) as contesto:
+            trasporto.richiedi(
+                "POST", "http://localhost:11434/api/chat", timeout=300
+            )
+        self.assertEqual(
+            "Il servizio Ollama ha restituito un errore HTTP.",
+            str(contesto.exception),
+        )
+        self.assertNotIn("segreto", str(contesto.exception))
+
+    def test_http_400_limita_il_corpo_e_non_espone_dati_eccessivi(self) -> None:
+        trasporto, causa = self.trasporto_con_errore(
+            b"x" * (LIMITE_CORPO_HTTP + 1)
+        )
+        with self.assertRaises(ErroreHTTPProvider) as contesto:
+            trasporto.richiedi(
+                "POST", "http://localhost:11434/api/chat", timeout=300
+            )
+        self.assertEqual(LIMITE_CORPO_HTTP, causa.fp.tell())
+        self.assertEqual(
+            "Il servizio Ollama ha restituito un errore HTTP.",
+            str(contesto.exception),
+        )
 
 
 class BaseRiparazioneTurno(unittest.TestCase):
@@ -363,6 +483,19 @@ class BaseRiparazioneTurno(unittest.TestCase):
 
 
 class TestRiparazioneSingola(BaseRiparazioneTurno):
+    def test_http_400_non_avvia_retry_e_non_scrive(self) -> None:
+        app = self.applicazione(TrasportoSequenziale())
+        iniziale = self.fotografia()
+        errore_http = ErroreHTTPProvider(
+            "Ollama ha restituito un errore HTTP 400: grammatica non valida."
+        )
+        with mock.patch("haria_engine.app.messagebox.showerror"):
+            app._mostra_esito_turno_narrativo(
+                EsitoAsincrono("turno_narrativo", errore=errore_http)
+            )
+        app._coordinatore_ai.avvia.assert_not_called()
+        self.assertEqual(iniziale, self.fotografia())
+
     def test_prima_risposta_valida_una_richiesta_e_un_salvataggio(self) -> None:
         trasporto = TrasportoSequenziale(risposta_http_assistant(output_valido()))
         app = self.applicazione(trasporto)
