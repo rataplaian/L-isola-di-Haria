@@ -129,6 +129,18 @@ precedente. La partita resta interamente locale e non aggiunge moderazione,
 blacklist o trasformazioni del testo narrativo. Ricerca semantica, simulazione
 fuori scena, salvataggi paralleli e rewind non sono ancora attivi.
 
+## Task 008.1 — Output narrativo strutturato
+
+Il turno narrativo invia a Ollama un JSON Schema completo tramite il campo
+nativo `format`. Prompt e provider derivano il contratto dalla stessa fonte:
+operazioni e memorie hanno varianti esplicite e non possono accettare proprietà
+appartenenti all'altro insieme.
+
+Se un primo output è un oggetto JSON leggibile ma strutturalmente errato,
+l'applicazione può inviare una sola richiesta automatica di correzione. JSON non
+valido, errori di rete, riferimenti inesistenti, incoerenze del mondo ed errori
+SQLite non vengono ritentati. Nessun tentativo scartato modifica il database.
+
 ## Requisiti
 
 - Python 3.11 o successivo;
@@ -210,7 +222,7 @@ python3 -m unittest discover -s tests -v
 python3 -m haria_engine --check
 ```
 
-La suite corrente contiene **275 test automatici** per Task 001–008. I test
+La suite corrente contiene **292 test automatici** per Task 001–008.1. I test
 Ollama usano trasporti simulati e non
 effettuano richieste verso servizi reali; i test del validatore verificano
 anche che database e configurazione AI rimangano invariati.
@@ -228,4 +240,5 @@ Le motivazioni dello stack e i confini architetturali sono descritti in
 `docs/TASK_001_STATUS.md`, `docs/TASK_002_STATUS.md`,
 `docs/TASK_003_STATUS.md`, `docs/TASK_004_STATUS.md`,
 `docs/TASK_005_STATUS.md`, `docs/TASK_006_STATUS.md`,
-`docs/TASK_007_STATUS.md` e `docs/TASK_008_STATUS.md`.
+`docs/TASK_007_STATUS.md`, `docs/TASK_008_STATUS.md` e
+`docs/TASK_008_1_STATUS.md`.

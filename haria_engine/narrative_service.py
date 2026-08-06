@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 from typing import Protocol
 
@@ -18,9 +18,10 @@ from .narrative_history import (
     TurnoNarrativoPersistito,
 )
 from .narrative_models import TurnoNarrativoProposto
-from .narrative_parser import ErroreOutputNarrativo, parse_output_narrativo
+from .narrative_parser import parse_output_narrativo
 from .narrative_prompt import (
     ContestoTurnoNarrativo,
+    costruisci_messaggi_correzione,
     costruisci_messaggi_turno,
     formatta_prompt_visibile,
 )
@@ -177,6 +178,23 @@ class ServizioNarrativo:
         piano = self.prepara_piano_da_risposta(turno, risposta)
         return self._archivio.applica_piano_turno_narrativo(piano)
 
+    @staticmethod
+    def prepara_correzione_strutturale(
+        turno: TurnoNarrativoPreparato,
+        prima_risposta: str,
+        errore_strutturale: str,
+    ) -> TurnoNarrativoPreparato:
+        """Prepara la seconda e ultima richiesta senza accedere al database."""
+
+        messaggi = costruisci_messaggi_correzione(
+            turno.messaggi, prima_risposta, errore_strutturale
+        )
+        return replace(
+            turno,
+            messaggi=messaggi,
+            prompt_visibile=formatta_prompt_visibile(messaggi),
+        )
+
     def prepara_turno(
         self,
         world_id: str,
@@ -261,10 +279,7 @@ class ServizioNarrativo:
 
     @staticmethod
     def _parse_risposta(risposta: str) -> TurnoNarrativoProposto:
-        try:
-            return parse_output_narrativo(risposta)
-        except ErroreOutputNarrativo as errore:
-            raise ErroreTurnoNarrativo(str(errore)) from errore
+        return parse_output_narrativo(risposta)
 
     def _valida_operazioni(
         self,

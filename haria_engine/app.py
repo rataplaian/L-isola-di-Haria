@@ -21,6 +21,7 @@ from .editor_state import SceltaModifiche, StatoEditor
 from .errors import ErroreConfigurazioneAI, ErroreHaria
 from .memories import MemoriaPersonaggio
 from .models import Mondo
+from .narrative_parser import ErroreStrutturaOutputNarrativo
 from .narrative_service import TurnoNarrativoPreparato
 from .package_models import DocumentoCanonico, MediaCanonico, PacchettoMondo
 from .paths import database_predefinito
@@ -154,6 +155,10 @@ UI_TEXT = {
     "nessun_mondo_gioco": "Importa o seleziona un mondo prima di giocare.",
     "nessun_modello_gioco": "Seleziona e salva un modello Ollama nelle Impostazioni AI.",
     "turno_in_corso": "Generazione e verifica del turno in corso...",
+    "correzione_formato_in_corso": "Correzione automatica del formato in corso…",
+    "correzione_formato_fallita": (
+        "La correzione automatica del formato non è riuscita. Nessun dato del turno è stato salvato."
+    ),
     "turno_completato": "Turno salvato nella partita locale.",
     "tempo_narrativo": "Tempo narrativo: {valore}",
     "prompt_turno": "Prompt del turno narrativo",
@@ -307,6 +312,8 @@ class ApplicazioneHaria:
         self._pulsanti_rete_ai: list[ttk.Button] = []
         self._cronologia_narrativa: list[str] = []
         self._turno_corrente: TurnoNarrativoPreparato | None = None
+        self._configurazione_turno_corrente: ConfigurazioneAI | None = None
+        self._correzione_turno_in_corso = False
         self._prompt_narrativo_corrente = ""
 
         self.radice.title(UI_TEXT["titolo_finestra"])
@@ -680,6 +687,8 @@ class ApplicazioneHaria:
             self.etichetta_stato_gioco.configure(text=UI_TEXT["stato_ai_occupato"])
             return
         self._turno_corrente = turno
+        self._configurazione_turno_corrente = configurazione
+        self._correzione_turno_in_corso = False
         self._prompt_narrativo_corrente = turno.prompt_visibile
         self._imposta_controlli_rete_ai(False)
         self.etichetta_stato_gioco.configure(text=UI_TEXT["turno_in_corso"])
@@ -708,6 +717,8 @@ class ApplicazioneHaria:
 
     def _azzera_turno_narrativo(self) -> None:
         self._turno_corrente = None
+        self._configurazione_turno_corrente = None
+        self._correzione_turno_in_corso = False
         self._prompt_narrativo_corrente = ""
         self._cronologia_narrativa.clear()
         self.conversazione_narrativa.configure(state=tk.NORMAL)
@@ -828,10 +839,14 @@ class ApplicazioneHaria:
             try:
                 self._mostra_esito_ai(esito)
             finally:
-                self._imposta_controlli_rete_ai(True)
+                if not self._coordinatore_ai.in_corso:
+                    self._imposta_controlli_rete_ai(True)
 
     def _mostra_esito_ai(self, esito: EsitoAsincrono[object]) -> None:
-        if esito.operazione == "turno_narrativo":
+        if esito.operazione in {
+            "turno_narrativo",
+            "correzione_turno_narrativo",
+        }:
             self._mostra_esito_turno_narrativo(esito)
             return
         if esito.errore is not None:
@@ -878,10 +893,10 @@ class ApplicazioneHaria:
         self, esito: EsitoAsincrono[object]
     ) -> None:
         turno = self._turno_corrente
-        self._turno_corrente = None
         if turno is None:
             return
         if self.mondo_corrente is None or self.mondo_corrente.id != turno.world_id:
+            self._concludi_turno_narrativo()
             return
         if esito.errore is not None:
             messaggio = (
@@ -889,20 +904,38 @@ class ApplicazioneHaria:
                 if isinstance(esito.errore, ErroreHaria)
                 else UI_TEXT["errore_ai_generico"]
             )
+            self._concludi_turno_narrativo()
             self.etichetta_stato_gioco.configure(text=messaggio)
             messagebox.showerror(UI_TEXT["errore"], messaggio)
             return
         if not isinstance(esito.risultato, RispostaTestuale):
+            self._concludi_turno_narrativo()
             self.etichetta_stato_gioco.configure(text=UI_TEXT["errore_ai_generico"])
             return
         try:
             persistito = self.servizio.narrativa.salva_risposta_turno(
                 turno, esito.risultato.contenuto
             )
+        except ErroreStrutturaOutputNarrativo as errore:
+            if (
+                esito.operazione == "turno_narrativo"
+                and not self._correzione_turno_in_corso
+                and self._avvia_correzione_turno_narrativo(
+                    turno, esito.risultato.contenuto, errore
+                )
+            ):
+                return
+            messaggio = UI_TEXT["correzione_formato_fallita"]
+            self._concludi_turno_narrativo()
+            self.etichetta_stato_gioco.configure(text=messaggio)
+            messagebox.showerror(UI_TEXT["errore"], messaggio)
+            return
         except ErroreHaria as errore:
+            self._concludi_turno_narrativo()
             self.etichetta_stato_gioco.configure(text=str(errore))
             messagebox.showerror(UI_TEXT["errore"], str(errore))
             return
+        self._concludi_turno_narrativo()
         self._carica_conversazione_narrativa()
         self.input_narrativo.delete("1.0", tk.END)
         self._aggiorna_stato_mondo()
@@ -918,6 +951,39 @@ class ApplicazioneHaria:
                 )
             )
         )
+
+    def _avvia_correzione_turno_narrativo(
+        self,
+        turno: TurnoNarrativoPreparato,
+        prima_risposta: str,
+        errore: ErroreStrutturaOutputNarrativo,
+    ) -> bool:
+        configurazione = self._configurazione_turno_corrente
+        if configurazione is None:
+            return False
+        corretto = self.servizio.narrativa.prepara_correzione_strutturale(
+            turno, prima_risposta, str(errore)
+        )
+        avviata = self._coordinatore_ai.avvia(
+            "correzione_turno_narrativo",
+            self.servizio.ai.genera_turno_narrativo,
+            configurazione,
+            corretto.messaggi,
+        )
+        if not avviata:
+            return False
+        self._turno_corrente = corretto
+        self._correzione_turno_in_corso = True
+        self._prompt_narrativo_corrente = corretto.prompt_visibile
+        self.etichetta_stato_gioco.configure(
+            text=UI_TEXT["correzione_formato_in_corso"]
+        )
+        return True
+
+    def _concludi_turno_narrativo(self) -> None:
+        self._turno_corrente = None
+        self._configurazione_turno_corrente = None
+        self._correzione_turno_in_corso = False
 
     def _imposta_controlli_rete_ai(self, abilitati: bool) -> None:
         stato = tk.NORMAL if abilitati else tk.DISABLED

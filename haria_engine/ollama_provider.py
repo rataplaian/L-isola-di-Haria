@@ -26,6 +26,7 @@ from .errors import (
     ErroreVersioneMancante,
 )
 from .http_transport import RispostaHTTP, TrasportoHTTP
+from .narrative_output_schema import schema_output_narrativo
 
 
 PROMPT_SISTEMA_PROVA = (
@@ -118,10 +119,15 @@ class OllamaProvider:
             raise ErroreModelloNonDisponibile(
                 "Seleziona un modello Ollama prima di iniziare il turno narrativo."
             )
-        return self._genera_da_messaggi(messaggi)
+        return self._genera_da_messaggi(
+            messaggi, format_json_schema=schema_output_narrativo()
+        )
 
     def _genera_da_messaggi(
-        self, messaggi: tuple[MessaggioChat, ...]
+        self,
+        messaggi: tuple[MessaggioChat, ...],
+        *,
+        format_json_schema: dict[str, object] | None = None,
     ) -> RispostaTestuale:
         payload = {
             "model": self.configurazione.ollama_model,
@@ -131,6 +137,8 @@ class OllamaProvider:
                 for messaggio in messaggi
             ],
         }
+        if format_json_schema is not None:
+            payload["format"] = format_json_schema
         dati = self._richiedi_json(
             "POST",
             "/api/chat",
